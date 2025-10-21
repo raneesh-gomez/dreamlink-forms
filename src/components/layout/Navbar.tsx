@@ -9,7 +9,7 @@ export default function Navbar() {
                 <div className="flex justify-between h-16">
                     <div className="flex">
                         <div className="flex-shrink-0 flex items-center">
-                            <span className="text-xl font-semibold">Survey Builder</span>
+                            <span className="text-xl font-semibold">DreamLink Forms</span>
                         </div>
                         <div className="ml-6 flex space-x-4">
                             <Link
@@ -20,17 +20,17 @@ export default function Navbar() {
                                         : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700'
                                 }`}
                             >
-                                Create Survey
+                                Create Form
                             </Link>
                             <Link
-                                to="/surveys"
+                                to="/forms"
                                 className={`inline-flex items-center px-4 py-2 border-b-2 ${
-                                    location.pathname === '/surveys'
+                                    location.pathname === '/forms'
                                         ? 'border-blue-500 text-gray-900'
                                         : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700'
                                 }`}
                             >
-                                View Surveys
+                                View Forms
                             </Link>
                         </div>
                     </div>

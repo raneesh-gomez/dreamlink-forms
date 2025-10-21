@@ -11,12 +11,12 @@ function App() {
         <BrowserRouter>
             <div className="min-h-screen bg-gray-50">
                 <Navbar />
-                <main className="pt-20">
+                <main className="pt-18">
                     <Routes>
                         <Route path="/" element={<SurveyCreatorWidget />} />
-                        <Route path="/surveys" element={<SurveyList />} />
-                        <Route path="/surveys/:id" element={<SurveyPreview />} />
-                        <Route path="/surveys/:id/edit" element={<EditSurvey />} />
+                        <Route path="/forms" element={<SurveyList />} />
+                        <Route path="/forms/:id" element={<SurveyPreview />} />
+                        <Route path="/forms/:id/edit" element={<EditSurvey />} />
                     </Routes>
                 </main>
             </div>
