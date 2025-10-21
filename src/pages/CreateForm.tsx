@@ -13,9 +13,9 @@ import { SurveyCreatorComponent } from 'survey-creator-react';
 import NavigationGuard from '@/components/common/NavigationGuard';
 import { Button } from '@/components/ui/button';
 import { useConfirm } from '@/hooks/use-confirm';
-import { useSurveyBuilder } from '@/hooks/use-survey-builder';
+import { useFormBuilder } from '@/hooks/use-form-builder';
 
-import './SurveyCreator.css';
+import './CreateForm.css';
 
 const defaultCreatorOptions: ICreatorOptions = {
     autoSaveEnabled: true,
@@ -24,14 +24,14 @@ const defaultCreatorOptions: ICreatorOptions = {
 
 const defaultJson = { pages: [] };
 
-export default function SurveyCreatorWidget(props: { json?: object; options?: ICreatorOptions }) {
+export default function CreateForm(props: { json?: object; options?: ICreatorOptions }) {
     const navigate = useNavigate();
     const confirm = useConfirm();
 
-    const storageKey = useMemo(() => `survey-${Date.now()}`, []);
+    const storageKey = useMemo(() => `dl-form-${Date.now()}`, []);
     const initialJson = JSON.stringify(props.json ?? defaultJson);
 
-    const { creator, hasChanges, saveStatus, reset, blockNavigation } = useSurveyBuilder({
+    const { creator, hasChanges, saveStatus, reset, blockNavigation } = useFormBuilder({
         mode: 'create',
         initialJson,
         storageKey,
@@ -42,7 +42,7 @@ export default function SurveyCreatorWidget(props: { json?: object; options?: IC
         if (!hasChanges) return;
         const ok = await confirm({
             title: 'Finish and go back?',
-            description: 'You’ll return to the survey list.',
+            description: 'You’ll return to the forms list.',
             confirmText: 'Go to list',
             cancelText: 'Stay',
         });
@@ -52,7 +52,7 @@ export default function SurveyCreatorWidget(props: { json?: object; options?: IC
     const handleReset = async () => {
         if (!hasChanges) return;
         const ok = await confirm({
-            title: 'Reset this survey?',
+            title: 'Reset this form?',
             description: 'All progress will be lost.',
             confirmText: 'Reset',
             cancelText: 'Cancel',

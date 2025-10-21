@@ -7,45 +7,43 @@ import { Button } from '@/components/ui/button';
 import { useConfirm } from '@/hooks/use-confirm';
 import { formatCreatedTime } from '@/lib/date-time-utils';
 
-// ⬅️ shadcn
-
-interface Survey {
+interface Form {
     id: string;
     json: string;
     timestamp: number;
 }
 
-export default function SurveyList() {
-    const [surveys, setSurveys] = useState<Survey[]>([]);
+export default function FormList() {
+    const [forms, setForms] = useState<Form[]>([]);
     const navigate = useNavigate();
     const confirm = useConfirm();
 
     useEffect(() => {
         const allKeys = Object.keys(localStorage);
-        const surveyKeys = allKeys.filter((key) => key.startsWith('survey-'));
+        const formKeys = allKeys.filter((key) => key.startsWith('dl-form-'));
 
-        const loadedSurveys: Survey[] = surveyKeys.map((key) => {
+        const loadedForms: Form[] = formKeys.map((key) => {
             const json = localStorage.getItem(key);
             const parts = key.split('-');
             const timestamp = Number(parts[2]) || Number(parts[1]) || 0;
             return {
-                id: key.replace('survey-', ''),
+                id: key.replace('dl-form-', ''),
                 json: json || '',
                 timestamp,
             };
         });
 
-        loadedSurveys.sort((a, b) => b.timestamp - a.timestamp);
-        setSurveys(loadedSurveys);
+        loadedForms.sort((a, b) => b.timestamp - a.timestamp);
+        setForms(loadedForms);
     }, []);
 
-    const handleSurveyClick = (surveyId: string) => {
-        navigate(`/forms/${surveyId}`);
+    const handleFormClick = (formId: string) => {
+        navigate(`/forms/${formId}`);
     };
 
-    const handleDelete = async (surveyId: string) => {
+    const handleDelete = async (formId: string) => {
         const ok = await confirm({
-            title: 'Delete this survey?',
+            title: 'Delete this form?',
             description: 'This action cannot be undone.',
             confirmText: 'Delete',
             cancelText: 'Cancel',
@@ -53,35 +51,35 @@ export default function SurveyList() {
         });
         if (!ok) return;
 
-        localStorage.removeItem(`survey-${surveyId}`);
-        setSurveys((prev) => prev.filter((s) => s.id !== surveyId));
+        localStorage.removeItem(`dl-form-${formId}`);
+        setForms((prev) => prev.filter((s) => s.id !== formId));
     };
 
     return (
         <div className="container mx-auto px-4 py-8">
             <h1 className="text-2xl font-bold mb-6">My Forms</h1>
-            {surveys.length === 0 ? (
+            {forms.length === 0 ? (
                 <p className="text-center text-gray-500">
-                    No surveys created yet. Start by creating a new survey!
+                    No forms created yet. Start by creating a new form!
                 </p>
             ) : (
                 <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-                    {surveys.map((survey) => {
-                        const surveyData = JSON.parse(survey.json || '{}');
+                    {forms.map((form) => {
+                        const formData = JSON.parse(form.json || '{}');
                         return (
                             <div
-                                key={survey.id}
+                                key={form.id}
                                 className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 hover:shadow-md transition-shadow group"
                             >
                                 <div
-                                    onClick={() => handleSurveyClick(survey.id)}
+                                    onClick={() => handleFormClick(form.id)}
                                     className="cursor-pointer"
                                 >
                                     <h2 className="text-lg font-semibold mb-2">
-                                        {surveyData.title || 'Untitled Form'}
+                                        {formData.title || 'Untitled Form'}
                                     </h2>
                                     <p className="text-sm text-gray-500">
-                                        Created: {formatCreatedTime(survey.timestamp)}
+                                        Created: {formatCreatedTime(form.timestamp)}
                                     </p>
                                 </div>
 
@@ -89,12 +87,12 @@ export default function SurveyList() {
                                     <Button
                                         onClick={(e) => {
                                             e.stopPropagation();
-                                            navigate(`/forms/${survey.id}/edit`);
+                                            navigate(`/forms/${form.id}/edit`);
                                         }}
                                         variant="ghost"
                                         size="icon"
-                                        title="Edit Survey"
-                                        aria-label="Edit survey"
+                                        title="Edit Form"
+                                        aria-label="Edit Form"
                                         className="text-gray-600 hover:text-blue-600 hover:bg-blue-50 hover:cursor-pointer"
                                     >
                                         <PenSquare className="h-4 w-4" />
@@ -103,12 +101,12 @@ export default function SurveyList() {
                                     <Button
                                         onClick={async (e) => {
                                             e.stopPropagation();
-                                            await handleDelete(survey.id);
+                                            await handleDelete(form.id);
                                         }}
                                         variant="ghost"
                                         size="icon"
-                                        title="Delete Survey"
-                                        aria-label="Delete survey"
+                                        title="Delete Form"
+                                        aria-label="Delete Form"
                                         className="text-gray-600 hover:text-red-600 hover:bg-red-50 hover:cursor-pointer"
                                     >
                                         <Trash2 className="h-4 w-4" />

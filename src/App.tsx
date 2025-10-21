@@ -1,10 +1,10 @@
 import { BrowserRouter, Route, Routes } from 'react-router-dom';
 
-import SurveyCreatorWidget from './components/forms/surveyjs/SurveyCreator';
 import Navbar from './components/layout/Navbar';
-import EditSurvey from './pages/EditSurvey';
-import SurveyList from './pages/SurveyList';
-import SurveyPreview from './pages/SurveyPreview';
+import CreateForm from './pages/CreateForm';
+import EditForm from './pages/EditForm';
+import FormList from './pages/FormList';
+import FormPreview from './pages/FormPreview';
 
 function App() {
     return (
@@ -13,10 +13,10 @@ function App() {
                 <Navbar />
                 <main className="pt-18">
                     <Routes>
-                        <Route path="/" element={<SurveyCreatorWidget />} />
-                        <Route path="/forms" element={<SurveyList />} />
-                        <Route path="/forms/:id" element={<SurveyPreview />} />
-                        <Route path="/forms/:id/edit" element={<EditSurvey />} />
+                        <Route path="/" element={<CreateForm />} />
+                        <Route path="/forms" element={<FormList />} />
+                        <Route path="/forms/:id" element={<FormPreview />} />
+                        <Route path="/forms/:id/edit" element={<EditForm />} />
                     </Routes>
                 </main>
             </div>

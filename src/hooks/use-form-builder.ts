@@ -7,11 +7,11 @@ type SaveStatus = 'saving' | 'saved' | null;
 
 type Mode = 'create' | 'edit';
 
-type UseSurveyBuilderArgs = {
+type UseFormBuilderArgs = {
     mode: Mode;
     /** Initial JSON string to load into the creator at mount */
     initialJson: string;
-    /** LocalStorage key to persist to. For create, pass the key you want (e.g., `survey-<timestamp>`). */
+    /** LocalStorage key to persist to. For create, pass the key you want (e.g., `dl-form-<timestamp>`). */
     storageKey: string;
     /** Survey Creator options */
     options?: ICreatorOptions;
@@ -23,14 +23,14 @@ type UseSurveyBuilderArgs = {
     enabled?: boolean;
 };
 
-export function useSurveyBuilder({
+export function useFormBuilder({
     initialJson,
     storageKey,
     options,
     debounceMs = 500,
     savedBadgeMs = 3000,
     enabled = true,
-}: UseSurveyBuilderArgs) {
+}: UseFormBuilderArgs) {
     // 1) Creator instance (stable)
     const creator = useMemo(() => new SurveyCreator(options), [options]);
 
@@ -54,7 +54,7 @@ export function useSurveyBuilder({
         lastSavedJsonRef.current = initialJson;
         setHasChanges(false);
         setSaveStatus(null);
-    }, [creator, storageKey, initialJson, enabled]); // storageKey in deps ensures if key changes (different survey) we init fresh
+    }, [creator, storageKey, initialJson, enabled]); // storageKey in deps ensures if key changes (different form) we init fresh
 
     // 6) Register SurveyJS change listeners (debounced autosave)
     useEffect(() => {
@@ -114,7 +114,7 @@ export function useSurveyBuilder({
     const unsavedVsLastSaved = enabled && creator.text !== lastSavedJsonRef.current;
     const blockNavigation = Boolean(unsavedVsLastSaved || saveStatus === 'saving');
 
-    // 9) Wire SurveyCreator's "save" button (SurveyJS internal)
+    // 9) Wire CreateForm's "save" button (SurveyJS internal)
     creator.saveSurveyFunc = (saveNo: number, callback: (n: number, ok: boolean) => void) => {
         callback(saveNo, true);
     };

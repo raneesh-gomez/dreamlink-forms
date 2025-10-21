@@ -10,32 +10,30 @@ import { SurveyCreatorComponent } from 'survey-creator-react';
 import NavigationGuard from '@/components/common/NavigationGuard';
 import { Button } from '@/components/ui/button';
 import { useConfirm } from '@/hooks/use-confirm';
-import { useSurveyBuilder } from '@/hooks/use-survey-builder';
+import { useFormBuilder } from '@/hooks/use-form-builder';
 
-// ⬅️ shadcn
-
-import './EditSurvey.css';
+import './EditForm.css';
 
 const creatorOptions: ICreatorOptions = {
     autoSaveEnabled: true,
     collapseOnDrag: true,
 };
 
-export default function EditSurvey() {
+export default function EditForm() {
     const { id } = useParams<{ id: string }>();
     const navigate = useNavigate();
     const confirm = useConfirm();
 
     const loadedJson = useMemo(() => {
         if (!id) return null;
-        return localStorage.getItem(`survey-${id}`);
+        return localStorage.getItem(`dl-form-${id}`);
     }, [id]);
 
     const enabled = Boolean(id && loadedJson);
-    const storageKey = useMemo(() => (id ? `survey-${id}` : 'survey-invalid'), [id]);
+    const storageKey = useMemo(() => (id ? `dl-form-${id}` : 'dl-form-invalid'), [id]);
     const initialJson = loadedJson ?? JSON.stringify({ pages: [] });
 
-    const { creator, hasChanges, saveStatus, reset, blockNavigation } = useSurveyBuilder({
+    const { creator, hasChanges, saveStatus, reset, blockNavigation } = useFormBuilder({
         mode: 'edit',
         initialJson,
         storageKey,
