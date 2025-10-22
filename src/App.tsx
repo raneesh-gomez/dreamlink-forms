@@ -5,6 +5,7 @@ import CreateForm from './pages/CreateForm';
 import EditForm from './pages/EditForm';
 import FormList from './pages/FormList';
 import FormPreview from './pages/FormPreview';
+import FormResponses from './pages/FormResponses';
 
 function App() {
     return (
@@ -17,6 +18,7 @@ function App() {
                         <Route path="/forms" element={<FormList />} />
                         <Route path="/forms/:id" element={<FormPreview />} />
                         <Route path="/forms/:id/edit" element={<EditForm />} />
+                        <Route path="/forms/:id/responses" element={<FormResponses />} />
                     </Routes>
                 </main>
             </div>

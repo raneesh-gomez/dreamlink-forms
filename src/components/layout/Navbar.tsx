@@ -11,10 +11,10 @@ export default function Navbar() {
                         <div className="flex-shrink-0 flex items-center">
                             <span className="text-xl font-semibold">DreamLink Forms</span>
                         </div>
-                        <div className="ml-6 flex space-x-4">
+                        <div className="ml-6 flex">
                             <Link
                                 to="/"
-                                className={`inline-flex items-center px-4 py-2 border-b-2 ${
+                                className={`inline-flex items-center px-8 py-2 border-b-2 ${
                                     location.pathname === '/'
                                         ? 'border-blue-500 text-gray-900'
                                         : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700'
@@ -24,7 +24,7 @@ export default function Navbar() {
                             </Link>
                             <Link
                                 to="/forms"
-                                className={`inline-flex items-center px-4 py-2 border-b-2 ${
+                                className={`inline-flex items-center px-8 py-2 border-b-2 ${
                                     location.pathname === '/forms'
                                         ? 'border-blue-500 text-gray-900'
                                         : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700'

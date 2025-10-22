@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 
-import { PenSquare, Trash2 } from 'lucide-react';
+import { ClipboardCheck, PenSquare, Trash2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
 import { Button } from '@/components/ui/button';
@@ -84,6 +84,20 @@ export default function FormList() {
                                 </div>
 
                                 <div className="flex justify-end gap-2 mt-4 pt-4 border-t border-gray-100">
+                                    <Button
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            navigate(`/forms/${form.id}/responses`);
+                                        }}
+                                        variant="ghost"
+                                        size="icon"
+                                        title="View Responses"
+                                        aria-label="View Responses"
+                                        className="text-gray-600 hover:text-green-600 hover:bg-blue-50 hover:cursor-pointer"
+                                    >
+                                        <ClipboardCheck className="h-4 w-4" />
+                                    </Button>
+
                                     <Button
                                         onClick={(e) => {
                                             e.stopPropagation();
