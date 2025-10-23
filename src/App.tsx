@@ -1,6 +1,7 @@
 import { HashRouter, Navigate, Route, Routes } from 'react-router-dom';
 
 import Navbar from './components/layout/Navbar';
+import { useFrappeProbe } from './hooks/use-frappe-probe';
 import CreateForm from './pages/CreateForm';
 import EditForm from './pages/EditForm';
 import FormList from './pages/FormList';
@@ -8,6 +9,12 @@ import FormPreview from './pages/FormPreview';
 import FormResponses from './pages/FormResponses';
 
 function App() {
+    useFrappeProbe({
+        enabled: true,
+        withToasts: true,
+        limit: 10,
+    });
+
     return (
         <HashRouter>
             <div className="min-h-screen bg-gray-50">
