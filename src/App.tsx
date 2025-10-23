@@ -1,4 +1,4 @@
-import { BrowserRouter, Route, Routes } from 'react-router-dom';
+import { HashRouter, Navigate, Route, Routes } from 'react-router-dom';
 
 import Navbar from './components/layout/Navbar';
 import CreateForm from './pages/CreateForm';
@@ -9,20 +9,22 @@ import FormResponses from './pages/FormResponses';
 
 function App() {
     return (
-        <BrowserRouter>
+        <HashRouter>
             <div className="min-h-screen bg-gray-50">
                 <Navbar />
                 <main className="pt-18">
                     <Routes>
-                        <Route path="/" element={<CreateForm />} />
+                        <Route path="/" element={<Navigate to="/forms/create" replace />} />
+                        <Route path="/forms/create" element={<CreateForm />} />
                         <Route path="/forms" element={<FormList />} />
                         <Route path="/forms/:id" element={<FormPreview />} />
                         <Route path="/forms/:id/edit" element={<EditForm />} />
                         <Route path="/forms/:id/responses" element={<FormResponses />} />
+                        <Route path="*" element={<Navigate to="/forms/create" replace />} />
                     </Routes>
                 </main>
             </div>
-        </BrowserRouter>
+        </HashRouter>
     );
 }
 
