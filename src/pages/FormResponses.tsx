@@ -34,7 +34,7 @@ function toCsv(rows: Array<Record<string, unknown>>, delimiter = ',') {
 }
 
 export default function FormResponses() {
-    const { id } = useParams<{ id: string }>();
+    const { frappeName } = useParams<{ frappeName: string }>();
     const navigate = useNavigate();
     const confirm = useConfirm();
 
@@ -45,17 +45,20 @@ export default function FormResponses() {
     const pageSize = 25;
 
     const formTitle = useMemo(() => {
-        const json = id ? localStorage.getItem(`dl-form-${id}`) : null;
+        const json = frappeName ? localStorage.getItem(`dl-form-${frappeName}`) : null;
         try {
             const parsed = json ? JSON.parse(json) : null;
             return parsed?.title || 'Untitled Form';
         } catch {
             return 'Untitled Form';
         }
-    }, [id]);
+    }, [frappeName]);
 
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    const raw = useMemo(() => (id ? getResponses(id) : []), [id, refreshTick]);
+    const raw = useMemo(
+        () => (frappeName ? getResponses(frappeName) : []),
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+        [frappeName, refreshTick],
+    );
 
     const sorted: LocalResponseRecord[] = useMemo(() => {
         const list = [...raw];
@@ -107,7 +110,7 @@ export default function FormResponses() {
     const handleRefresh = () => setRefreshTick((t) => t + 1);
 
     const handleClearAll = async () => {
-        if (!id) return;
+        if (!frappeName) return;
         const ok = await confirm({
             title: 'Clear all responses?',
             description: 'This will permanently delete all responses for this form.',
@@ -116,7 +119,7 @@ export default function FormResponses() {
             variant: 'destructive',
         });
         if (!ok) return;
-        clearResponses(id);
+        clearResponses(frappeName);
         handleRefresh();
         setPage(1);
     };
