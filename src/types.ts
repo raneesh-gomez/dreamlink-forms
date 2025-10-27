@@ -5,8 +5,8 @@ export type DocTypeRow = {
 };
 
 export type UserRow = {
-    name: string;
+    username?: string;
     full_name?: string;
     email?: string;
-    creation: string;
+    last_active: string;
 };

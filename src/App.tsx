@@ -1,4 +1,5 @@
 import { HashRouter, Navigate, Route, Routes } from 'react-router-dom';
+import { Toaster } from 'sonner';
 
 import Navbar from './components/layout/Navbar';
 import { useFrappeProbe } from './hooks/use-frappe-probe';
@@ -20,6 +21,7 @@ function App() {
             <div className="min-h-screen bg-gray-50">
                 <Navbar />
                 <main className="pt-18">
+                    <Toaster richColors position="top-right" />
                     <Routes>
                         <Route path="/" element={<Navigate to="/forms/create" replace />} />
                         <Route path="/forms/create" element={<CreateForm />} />
