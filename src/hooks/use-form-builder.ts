@@ -4,10 +4,9 @@ import { type ICreatorOptions } from 'survey-creator-core';
 import { SurveyCreator } from 'survey-creator-react';
 
 type SaveStatus = 'saving' | 'saved' | null;
-
 type Mode = 'create' | 'edit';
 
-type UseFormBuilderArgs = {
+export type UseFormBuilderArgs = {
     mode: Mode;
     /** Initial JSON string to load into the creator at mount */
     initialJson: string;
@@ -21,6 +20,11 @@ type UseFormBuilderArgs = {
     savedBadgeMs?: number;
     /** Whether the hook is enabled (default true). When false, no side-effects occur. */
     enabled?: boolean;
+    /**
+     * Called inside the debounced autosave. Use this to persist to your backend (Frappe).
+     * If it returns a Promise, we await it before showing the “saved” badge.
+     */
+    onAutoSave?: (args: { jsonText: string; title: string; slug: string }) => Promise<void> | void;
 };
 
 export function useFormBuilder({
@@ -30,6 +34,7 @@ export function useFormBuilder({
     debounceMs = 500,
     savedBadgeMs = 3000,
     enabled = true,
+    onAutoSave,
 }: UseFormBuilderArgs) {
     // 1) Creator instance (stable)
     const creator = useMemo(() => new SurveyCreator(options), [options]);
@@ -45,6 +50,15 @@ export function useFormBuilder({
     // 4) Timers
     const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const clearStatusTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+    // util
+    const slugify = (s: string) =>
+        (s || '')
+            .toLowerCase()
+            .trim()
+            .replace(/\s+/g, '-')
+            .replace(/[^a-z0-9-]/g, '')
+            .slice(0, 64);
 
     // 5) Load initial JSON on mount
     useEffect(() => {
@@ -67,14 +81,32 @@ export function useFormBuilder({
             if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
             if (clearStatusTimerRef.current) clearTimeout(clearStatusTimerRef.current);
 
+            // Only do work if changed since last successful save
             if (currentJson !== lastSavedJsonRef.current) {
                 setSaveStatus('saving');
-                autoSaveTimerRef.current = setTimeout(() => {
+
+                autoSaveTimerRef.current = setTimeout(async () => {
                     try {
+                        // Validate JSON
                         JSON.parse(currentJson);
+
+                        // 1) Local draft persistence (optional but handy)
                         localStorage.setItem(storageKey, currentJson);
+
+                        // 2) Server persistence via callback (FRAPPE)
+                        if (onAutoSave) {
+                            const title = creator.survey?.title || 'Untitled Form';
+                            const slug = slugify(title);
+                            // Await so the “saved” badge reflects the REAL persisted state
+                            await onAutoSave({ jsonText: currentJson, title, slug });
+                        }
+
+                        // Mark saved
                         lastSavedJsonRef.current = currentJson;
+                        setHasChanges(false);
                         setSaveStatus('saved');
+
+                        // Keep the badge visible for a bit
                         clearStatusTimerRef.current = setTimeout(
                             () => setSaveStatus(null),
                             savedBadgeMs,
@@ -89,13 +121,14 @@ export function useFormBuilder({
 
         creator.onModified.add(handleChange);
         creator.onPropertyChanged.add(handleChange);
+
         return () => {
             creator.onModified.remove(handleChange);
             creator.onPropertyChanged.remove(handleChange);
             if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
             if (clearStatusTimerRef.current) clearTimeout(clearStatusTimerRef.current);
         };
-    }, [creator, storageKey, debounceMs, savedBadgeMs, enabled]);
+    }, [creator, storageKey, debounceMs, savedBadgeMs, enabled, onAutoSave]);
 
     // 7) Reset back to the original snapshot
     const reset = () => {
@@ -114,7 +147,7 @@ export function useFormBuilder({
     const unsavedVsLastSaved = enabled && creator.text !== lastSavedJsonRef.current;
     const blockNavigation = Boolean(unsavedVsLastSaved || saveStatus === 'saving');
 
-    // 9) Wire CreateForm's "save" button (SurveyJS internal)
+    // 9) Wire SurveyJS internal save (no-op so Creator doesn't hijack navigation)
     creator.saveSurveyFunc = (saveNo: number, callback: (n: number, ok: boolean) => void) => {
         callback(saveNo, true);
     };

@@ -10,7 +10,7 @@ import { Button } from '@/components/ui/button';
 import { type LocalResponseRecord, addResponse } from '@/lib/responses-local';
 
 export default function FormPreview() {
-    const { id } = useParams<{ id: string }>();
+    const { frappeName } = useParams<{ frappeName: string }>();
     const navigate = useNavigate();
 
     const [completed, setCompleted] = useState<boolean>(false);
@@ -35,13 +35,13 @@ export default function FormPreview() {
 
     // Load form JSON
     const formJson = useMemo(() => {
-        if (!id) return null;
-        const json = localStorage.getItem(`dl-form-${id}`);
+        if (!frappeName) return null;
+        const json = localStorage.getItem(`dl-form-${frappeName}`);
         return json ? JSON.parse(json) : null;
-    }, [id]);
+    }, [frappeName]);
 
     useEffect(() => {
-        if (!id || !formJson) return;
+        if (!frappeName || !formJson) return;
 
         const survey = new Model(formJson);
 
@@ -53,14 +53,14 @@ export default function FormPreview() {
                 submittedAt: Date.now(),
                 data: sender.data,
             };
-            addResponse(id, record);
+            addResponse(frappeName, record);
             setCompleted(true);
         });
 
         setModel(survey);
-    }, [id, formJson]);
+    }, [frappeName, formJson]);
 
-    if (!id) return <div className="container mx-auto px-4 py-8">Invalid form.</div>;
+    if (!frappeName) return <div className="container mx-auto px-4 py-8">Invalid form.</div>;
     if (!formJson) {
         return (
             <div className="container mx-auto px-4 py-8">
@@ -92,7 +92,7 @@ export default function FormPreview() {
                     <div className="text-sm text-green-800">
                         Response saved. You can view it in the “Responses” page.
                     </div>
-                    <Button onClick={() => navigate(`/forms/${id}/responses`)}>
+                    <Button onClick={() => navigate(`/forms/${frappeName}/responses`)}>
                         View Responses
                     </Button>
                 </div>

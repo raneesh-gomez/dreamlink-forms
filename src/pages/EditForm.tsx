@@ -1,9 +1,9 @@
-import { useEffect, useMemo } from 'react';
+import { useCallback, useMemo } from 'react';
 
 import { RotateCcw, Save } from 'lucide-react';
 import { useNavigate, useParams } from 'react-router-dom';
 import 'survey-core/survey-core.css';
-import { type ICreatorOptions } from 'survey-creator-core';
+import type { ICreatorOptions } from 'survey-creator-core';
 import 'survey-creator-core/survey-creator-core.css';
 import { SurveyCreatorComponent } from 'survey-creator-react';
 
@@ -11,6 +11,7 @@ import NavigationGuard from '@/components/common/NavigationGuard';
 import { Button } from '@/components/ui/button';
 import { useConfirm } from '@/hooks/use-confirm';
 import { useFormBuilder } from '@/hooks/use-form-builder';
+import { useDlForm } from '@/hooks/use-frappe-forms';
 
 import './EditForm.css';
 
@@ -18,35 +19,54 @@ const creatorOptions: ICreatorOptions = {
     autoSaveEnabled: true,
     collapseOnDrag: true,
 };
-
 export default function EditForm() {
-    const { id } = useParams<{ id: string }>();
+    // URL is /forms/:frappeName/edit
+    const { frappeName } = useParams<{ frappeName: string }>();
     const navigate = useNavigate();
     const confirm = useConfirm();
-
-    const loadedJson = useMemo(() => {
-        if (!id) return null;
-        return localStorage.getItem(`dl-form-${id}`);
-    }, [id]);
-
-    const enabled = Boolean(id && loadedJson);
-    const storageKey = useMemo(() => (id ? `dl-form-${id}` : 'dl-form-invalid'), [id]);
-    const initialJson = loadedJson ?? JSON.stringify({ pages: [] });
-
+    // Load the doc directly by its Frappe name
+    const { doc, docname, upsert } = useDlForm(frappeName ?? null);
+    // JSON text for SurveyJS
+    const loadedJsonText = useMemo(() => {
+        const raw = doc?.schema_json;
+        if (!raw) return JSON.stringify({ pages: [] });
+        return typeof raw === 'string' ? raw : JSON.stringify(raw);
+    }, [doc]);
+    // Enable builder when we have a valid doc
+    const enabled = Boolean(frappeName && doc);
+    const storageKey = useMemo(
+        () => (frappeName ? `dl-form-${frappeName}` : 'dl-form-invalid'),
+        [frappeName],
+    );
+    // Persist to Frappe on each debounced autosave
+    const persistToFrappe = useCallback(
+        async ({ jsonText, title, slug }: { jsonText: string; title: string; slug: string }) => {
+            await upsert({
+                name: docname ?? frappeName ?? null, // should be present for edits
+                title,
+                slug,
+                schemaJSON: jsonText,
+                changelog: 'Autosave',
+            });
+        },
+        [upsert, docname, frappeName],
+    );
     const { creator, hasChanges, saveStatus, reset, blockNavigation } = useFormBuilder({
         mode: 'edit',
-        initialJson,
+        initialJson: loadedJsonText,
         storageKey,
         options: creatorOptions,
-        enabled,
+        enabled, // initialize only when doc is available
+        onAutoSave: persistToFrappe,
     });
-
-    useEffect(() => {
-        if (!enabled) navigate('/forms', { replace: true });
-    }, [enabled, navigate]);
-
-    if (!enabled) return null;
-
+    if (!frappeName) return null;
+    if (!enabled) {
+        return (
+            <div className="container mx-auto px-4 py-8">
+                <p className="text-center text-gray-500">Loading form…</p>
+            </div>
+        );
+    }
     const handleFinish = async () => {
         if (!hasChanges) return;
         const ok = await confirm({
@@ -57,7 +77,6 @@ export default function EditForm() {
         });
         if (ok) navigate('/forms');
     };
-
     const handleReset = async () => {
         if (!hasChanges) return;
         const ok = await confirm({
@@ -69,7 +88,6 @@ export default function EditForm() {
         });
         if (ok) reset();
     };
-
     return (
         <div
             className="relative flex flex-col"
@@ -83,7 +101,6 @@ export default function EditForm() {
                         : 'You have unsaved changes. If you leave now, your latest edits will be lost.'
                 }
             />
-
             <div className="bg-white border-b border-gray-200 px-4 py-2 flex items-center justify-between shadow-sm">
                 <div className="flex items-center gap-3">
                     <h2 className="text-lg font-semibold">Edit Form</h2>
@@ -98,7 +115,6 @@ export default function EditForm() {
                         </span>
                     )}
                 </div>
-
                 <div className="flex items-center gap-3">
                     <Button
                         onClick={handleFinish}
@@ -108,7 +124,6 @@ export default function EditForm() {
                         <Save className="h-4 w-4" />
                         Finish Form
                     </Button>
-
                     <Button
                         onClick={handleReset}
                         disabled={!hasChanges}
@@ -120,7 +135,6 @@ export default function EditForm() {
                     </Button>
                 </div>
             </div>
-
             <div className="flex-1">
                 <SurveyCreatorComponent creator={creator} />
             </div>

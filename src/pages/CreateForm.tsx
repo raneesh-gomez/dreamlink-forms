@@ -1,48 +1,62 @@
-import { useMemo } from 'react';
+import { useCallback, useMemo } from 'react';
 
-import 'ace-builds/src-noconflict/ace';
-import 'ace-builds/src-noconflict/ext-searchbox';
-import 'ace-builds/src-noconflict/theme-clouds_midnight';
 import { RotateCcw, Save } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import 'survey-core/survey-core.css';
-import { type ICreatorOptions } from 'survey-creator-core';
-import 'survey-creator-core/survey-creator-core.css';
+import type { ICreatorOptions } from 'survey-creator-core';
 import { SurveyCreatorComponent } from 'survey-creator-react';
 
 import NavigationGuard from '@/components/common/NavigationGuard';
 import { Button } from '@/components/ui/button';
 import { useConfirm } from '@/hooks/use-confirm';
 import { useFormBuilder } from '@/hooks/use-form-builder';
+import { useDlForm } from '@/hooks/use-frappe-forms';
 
-import './CreateForm.css';
-
-const defaultCreatorOptions: ICreatorOptions = {
-    autoSaveEnabled: true,
-    collapseOnDrag: true,
-};
-
+const defaultCreatorOptions: ICreatorOptions = { autoSaveEnabled: true, collapseOnDrag: true };
 const defaultJson = { pages: [] };
 
 export default function CreateForm(props: { json?: object; options?: ICreatorOptions }) {
     const navigate = useNavigate();
     const confirm = useConfirm();
 
+    // give every new form a stable draft key for this session
     const storageKey = useMemo(() => `dl-form-${Date.now()}`, []);
     const initialJson = JSON.stringify(props.json ?? defaultJson);
+
+    // frappe upsert hook (docname is null until first create)
+    const { upsert, docname } = useDlForm(null);
+
+    // callback the builder will call on each debounced autosave
+    const persistToFrappe = useCallback(
+        async ({ jsonText, title, slug }: { jsonText: string; title: string; slug: string }) => {
+            const res = await upsert({
+                name: docname ?? null, // null = create
+                title,
+                slug,
+                schemaJSON: jsonText,
+                changelog: 'Autosave',
+            });
+
+            // ⚠️ Save the frappe docname for future edits
+            if (!docname && res?.name) {
+                localStorage.setItem(`dl-form-${storageKey}-frappe-name`, res.name);
+            }
+        },
+        [upsert, docname, storageKey],
+    );
 
     const { creator, hasChanges, saveStatus, reset, blockNavigation } = useFormBuilder({
         mode: 'create',
         initialJson,
         storageKey,
         options: props.options || defaultCreatorOptions,
+        onAutoSave: persistToFrappe, // <-- this is the line that persists to Frappe
     });
 
     const handleFinish = async () => {
         if (!hasChanges) return;
         const ok = await confirm({
             title: 'Finish and go back?',
-            description: 'You’ll return to the forms list.',
+            description: "You'll return to the forms list.",
             confirmText: 'Go to list',
             cancelText: 'Stay',
         });
@@ -94,17 +108,16 @@ export default function CreateForm(props: { json?: object; options?: ICreatorOpt
                     <Button
                         onClick={handleFinish}
                         disabled={!hasChanges}
-                        className="gap-2 disabled:opacity-50 hover:cursor-pointer"
+                        className="gap-2 disabled:opacity-50"
                     >
                         <Save className="h-4 w-4" />
                         Finish Form
                     </Button>
-
                     <Button
                         onClick={handleReset}
                         disabled={!hasChanges}
                         variant="destructive"
-                        className="gap-2 disabled:opacity-50 hover:cursor-pointer"
+                        className="gap-2 disabled:opacity-50"
                     >
                         <RotateCcw className="h-4 w-4" />
                         Reset Form

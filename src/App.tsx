@@ -26,9 +26,9 @@ function App() {
                         <Route path="/" element={<Navigate to="/forms/create" replace />} />
                         <Route path="/forms/create" element={<CreateForm />} />
                         <Route path="/forms" element={<FormList />} />
-                        <Route path="/forms/:id" element={<FormPreview />} />
-                        <Route path="/forms/:id/edit" element={<EditForm />} />
-                        <Route path="/forms/:id/responses" element={<FormResponses />} />
+                        <Route path="/forms/:frappeName" element={<FormPreview />} />
+                        <Route path="/forms/:frappeName/edit" element={<EditForm />} />
+                        <Route path="/forms/:frappeName/responses" element={<FormResponses />} />
                         <Route path="*" element={<Navigate to="/forms/create" replace />} />
                     </Routes>
                 </main>
