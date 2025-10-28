@@ -1,33 +1,20 @@
-import { useFrappeDeleteDoc, useFrappeGetDocList } from 'frappe-react-sdk';
 import { ClipboardCheck, PenSquare, Trash2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
 import { Button } from '@/components/ui/button';
+import { useFormRepositoryContext } from '@/hooks/context-hooks/use-formrepository-context';
 import { useConfirm } from '@/hooks/use-confirm';
 import { formatCreatedTime } from '@/lib/date-time-utils';
 
-interface DLForm {
-    name: string;
-    title: string;
-    status: string;
-    creation: string;
-    modified: string;
-    owner: string;
-}
 export default function FormList() {
     const navigate = useNavigate();
     const confirm = useConfirm();
-    // Fetch all DL Form documents
-    const {
-        data: forms,
-        mutate: refetch,
-        isLoading,
-    } = useFrappeGetDocList<DLForm>('DL Form', {
-        fields: ['name', 'title', 'status', 'creation', 'modified', 'owner'],
-        orderBy: { field: 'modified', order: 'desc' },
-    });
-    const { deleteDoc } = useFrappeDeleteDoc();
-    const handleDelete = async (formName: string) => {
+    const { mode, repo } = useFormRepositoryContext();
+
+    const { data: forms, isLoading, mutate } = repo.useList();
+    const { remove } = repo.useRemove();
+
+    const handleDelete = async (name: string) => {
         const ok = await confirm({
             title: 'Delete this form?',
             description: 'This action cannot be undone.',
@@ -36,19 +23,21 @@ export default function FormList() {
             variant: 'destructive',
         });
         if (!ok) return;
-        await deleteDoc('DL Form', formName);
-        await refetch();
+        await remove(name);
+        await mutate();
     };
+
     if (isLoading) {
         return (
-            <div className="container mx-auto px-4 py-8">
+            <div key={mode} className="container mx-auto px-4 py-8">
                 <p className="text-center text-gray-500">Loading forms…</p>
             </div>
         );
     }
+
     if (!forms?.length) {
         return (
-            <div className="container mx-auto px-4 py-8">
+            <div key={mode} className="container mx-auto px-4 py-8">
                 <h1 className="text-2xl font-bold mb-6">My Forms</h1>
                 <p className="text-center text-gray-500">
                     No forms created yet. Start by creating a new form!
@@ -56,8 +45,9 @@ export default function FormList() {
             </div>
         );
     }
+
     return (
-        <div className="container mx-auto px-4 py-8">
+        <div key={mode} className="container mx-auto px-4 py-8">
             <h1 className="text-2xl font-bold mb-6">My Forms</h1>
             <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
                 {forms.map((form) => (
@@ -70,9 +60,12 @@ export default function FormList() {
                             {form.title || 'Untitled Form'}
                         </h2>
                         <p className="text-sm text-gray-500">
-                            Created: {formatCreatedTime(new Date(form.creation).getTime())}
+                            Created: {formatCreatedTime(form.creation)}
                         </p>
-                        <p className="text-sm text-gray-400">Status: {form.status}</p>
+                        {form.status && (
+                            <p className="text-sm text-gray-400">Status: {form.status}</p>
+                        )}
+
                         <div className="flex justify-end gap-2 mt-4 pt-4 border-t border-gray-100">
                             <Button
                                 onClick={(e) => {
@@ -87,6 +80,7 @@ export default function FormList() {
                             >
                                 <ClipboardCheck className="h-4 w-4" />
                             </Button>
+
                             <Button
                                 onClick={(e) => {
                                     e.stopPropagation();
@@ -100,6 +94,7 @@ export default function FormList() {
                             >
                                 <PenSquare className="h-4 w-4" />
                             </Button>
+
                             <Button
                                 onClick={async (e) => {
                                     e.stopPropagation();

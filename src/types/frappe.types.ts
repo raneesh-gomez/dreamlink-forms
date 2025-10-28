@@ -15,7 +15,7 @@ export interface DLFormVersion {
 
 export interface DLForm {
     // Standard fields
-    name?: string;
+    name: string;
     owner?: string | null;
     creation?: string | null; // ISO datetime
     modified?: string | null; // ISO datetime

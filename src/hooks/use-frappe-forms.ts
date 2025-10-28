@@ -3,14 +3,8 @@ import { useCallback, useRef, useState } from 'react';
 import { useFrappeCreateDoc, useFrappeGetDoc, useFrappeUpdateDoc } from 'frappe-react-sdk';
 
 import type { DLForm, DLFormVersion } from '@/types/frappe.types';
+import type { UpsertInput } from '@/types/persistence.types';
 
-type UpsertInput = {
-    name?: string | null;
-    title: string;
-    slug?: string | null;
-    schemaJSON: string;
-    changelog?: string | null;
-};
 function toStringJson(value: unknown): string {
     if (typeof value === 'string') return value;
     try {

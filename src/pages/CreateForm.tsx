@@ -1,15 +1,17 @@
-import { useCallback, useMemo } from 'react';
+import { useCallback, useMemo, useRef } from 'react';
 
 import { RotateCcw, Save } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import 'survey-core/survey-core.css';
 import type { ICreatorOptions } from 'survey-creator-core';
+import 'survey-creator-core/survey-creator-core.css';
 import { SurveyCreatorComponent } from 'survey-creator-react';
 
 import NavigationGuard from '@/components/common/NavigationGuard';
 import { Button } from '@/components/ui/button';
+import { useFormRepositoryContext } from '@/hooks/context-hooks/use-formrepository-context';
 import { useConfirm } from '@/hooks/use-confirm';
 import { useFormBuilder } from '@/hooks/use-form-builder';
-import { useDlForm } from '@/hooks/use-frappe-forms';
 
 const defaultCreatorOptions: ICreatorOptions = { autoSaveEnabled: true, collapseOnDrag: true };
 const defaultJson = { pages: [] };
@@ -17,31 +19,28 @@ const defaultJson = { pages: [] };
 export default function CreateForm(props: { json?: object; options?: ICreatorOptions }) {
     const navigate = useNavigate();
     const confirm = useConfirm();
+    const { mode, repo } = useFormRepositoryContext();
+    const { upsert } = repo.useUpsert();
 
-    // give every new form a stable draft key for this session
     const storageKey = useMemo(() => `dl-form-${Date.now()}`, []);
     const initialJson = JSON.stringify(props.json ?? defaultJson);
 
-    // frappe upsert hook (docname is null until first create)
-    const { upsert, docname } = useDlForm(null);
+    const createdNameRef = useRef<string | null>(null);
 
-    // callback the builder will call on each debounced autosave
-    const persistToFrappe = useCallback(
+    const persistOnAutoSave = useCallback(
         async ({ jsonText, title, slug }: { jsonText: string; title: string; slug: string }) => {
             const res = await upsert({
-                name: docname ?? null, // null = create
+                name: createdNameRef.current,
                 title,
                 slug,
                 schemaJSON: jsonText,
                 changelog: 'Autosave',
             });
-
-            // ⚠️ Save the frappe docname for future edits
-            if (!docname && res?.name) {
-                localStorage.setItem(`dl-form-${storageKey}-frappe-name`, res.name);
+            if (!createdNameRef.current) {
+                createdNameRef.current = res.name;
             }
         },
-        [upsert, docname, storageKey],
+        [upsert],
     );
 
     const { creator, hasChanges, saveStatus, reset, blockNavigation } = useFormBuilder({
@@ -49,7 +48,7 @@ export default function CreateForm(props: { json?: object; options?: ICreatorOpt
         initialJson,
         storageKey,
         options: props.options || defaultCreatorOptions,
-        onAutoSave: persistToFrappe, // <-- this is the line that persists to Frappe
+        onAutoSave: persistOnAutoSave,
     });
 
     const handleFinish = async () => {
@@ -77,6 +76,7 @@ export default function CreateForm(props: { json?: object; options?: ICreatorOpt
 
     return (
         <div
+            key={mode}
             className="relative flex flex-col"
             style={{ height: 'calc(100vh - 64px)', width: '100%' }}
         >

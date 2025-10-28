@@ -5,6 +5,7 @@ import { createRoot } from 'react-dom/client';
 
 import App from './App.tsx';
 import { ConfirmDialogProvider } from './contexts/confirm-context/ConfirmProvider';
+import { FormRepositoryProvider } from './contexts/form-repository-context/FormRepositoryProvider';
 import './index.css';
 
 createRoot(document.getElementById('root')!).render(
@@ -17,9 +18,11 @@ createRoot(document.getElementById('root')!).render(
                 token: () => '4792bb735b72011:1d55759af747067',
             }}
         >
-            <ConfirmDialogProvider>
-                <App />
-            </ConfirmDialogProvider>
+            <FormRepositoryProvider>
+                <ConfirmDialogProvider>
+                    <App />
+                </ConfirmDialogProvider>
+            </FormRepositoryProvider>
         </FrappeProvider>
     </StrictMode>,
 );

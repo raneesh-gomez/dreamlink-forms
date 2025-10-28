@@ -4,6 +4,7 @@ import { ArrowLeft, Download, RefreshCw, Trash2 } from 'lucide-react';
 import { useNavigate, useParams } from 'react-router-dom';
 
 import { Button } from '@/components/ui/button';
+import { useFormRepositoryContext } from '@/hooks/context-hooks/use-formrepository-context';
 import { useConfirm } from '@/hooks/use-confirm';
 import { type LocalResponseRecord, clearResponses, getResponses } from '@/lib/responses-local';
 
@@ -37,8 +38,8 @@ export default function FormResponses() {
     const { frappeName } = useParams<{ frappeName: string }>();
     const navigate = useNavigate();
     const confirm = useConfirm();
+    const { mode } = useFormRepositoryContext();
 
-    // client-side pagination, sorting
     const [refreshTick, setRefreshTick] = useState(0);
     const [sortNewestFirst, setSortNewestFirst] = useState(true);
     const [page, setPage] = useState(1);
@@ -69,11 +70,9 @@ export default function FormResponses() {
     }, [raw, sortNewestFirst]);
 
     const total = sorted.length;
-    // const totalPages = Math.max(1, Math.ceil(total / pageSize));
     const pageStart = (page - 1) * pageSize;
     const pageSlice = sorted.slice(pageStart, pageStart + pageSize);
 
-    // dynamic columns from union of keys (answers) + submittedAt
     const { columns, tableRows } = useMemo(() => {
         const keys = new Set<string>(['submittedAt']);
         pageSlice.forEach((r) => Object.keys(r.data || {}).forEach((k) => keys.add(k)));
@@ -125,7 +124,7 @@ export default function FormResponses() {
     };
 
     return (
-        <div className="container mx-auto px-4 py-8 space-y-6">
+        <div key={mode} className="container mx-auto px-4 py-8 space-y-6">
             {/* Header Row */}
             <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                 <div className="flex items-center gap-3">
