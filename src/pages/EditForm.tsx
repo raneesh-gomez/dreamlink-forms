@@ -15,7 +15,12 @@ import { useFormBuilder } from '@/hooks/use-form-builder';
 
 import './EditForm.css';
 
-const creatorOptions: ICreatorOptions = { autoSaveEnabled: true, collapseOnDrag: true };
+// Manual-save flow: disable internal autosave
+const creatorOptions: ICreatorOptions = {
+    autoSaveEnabled: false,
+    collapseOnDrag: true,
+    showTranslationTab: true,
+};
 
 export default function EditForm() {
     const { frappeName } = useParams<{ frappeName: string }>();
@@ -23,63 +28,70 @@ export default function EditForm() {
     const confirm = useConfirm();
     const { mode, repo } = useFormRepositoryContext();
 
-    const { data: detail } = repo.useGet(frappeName ?? '');
+    // Repo
+    const { data: detail } = repo.useGet(frappeName ?? null);
     const { upsert } = repo.useUpsert();
 
+    // JSON boot
     const loadedJsonText = useMemo(
         () => detail?.schemaJSON ?? JSON.stringify({ pages: [] }),
         [detail],
     );
 
     const enabled = Boolean(frappeName && detail);
+
     const storageKey = useMemo(
         () => (frappeName ? `dl-form-${frappeName}` : 'dl-form-invalid'),
         [frappeName],
     );
 
-    const persistOnAutoSave = useCallback(
-        async ({ jsonText, title, slug }: { jsonText: string; title: string; slug: string }) => {
-            await upsert({
-                name: frappeName ?? null,
-                title,
-                slug,
-                schemaJSON: jsonText,
-                changelog: 'Autosave',
-            });
-        },
-        [upsert, frappeName],
-    );
-
-    const { creator, hasChanges, saveStatus, reset, blockNavigation } = useFormBuilder({
+    const { creator, hasChanges, reset, blockNavigation, markSaved } = useFormBuilder({
         mode: 'edit',
         initialJson: loadedJsonText,
         storageKey,
         options: creatorOptions,
         enabled,
-        onAutoSave: persistOnAutoSave,
+        // no onAutoSave in manual-save mode
     });
 
-    if (!frappeName) return null;
-    if (!enabled) {
-        return (
-            <div key={mode} className="container mx-auto px-4 py-8">
-                <p className="text-center text-gray-500">Loading form…</p>
-            </div>
-        );
-    }
+    // Define callbacks before early returns (Rules of Hooks)
 
-    const handleFinish = async () => {
-        if (!hasChanges) return;
+    const handleSave = useCallback(async () => {
+        if (!creator || !frappeName) return;
+
+        const jsonText: string = (creator as unknown as { text: string }).text;
+
+        let titleFromJson: string | undefined;
+        try {
+            const parsed = JSON.parse(jsonText) as { title?: string } | null;
+            titleFromJson = parsed?.title;
+        } catch {
+            /* ignore */
+        }
+
+        const safeTitle = titleFromJson || detail?.title || 'Untitled';
+
+        await upsert({
+            name: frappeName,
+            title: safeTitle,
+            slug: undefined, // keep slug unchanged during edit
+            schemaJSON: jsonText,
+            changelog: 'Manual save',
+        });
+
+        // 🔑 mark current content as saved so hasChanges flips to false
+        markSaved();
+
         const ok = await confirm({
-            title: 'Finish and go back?',
-            description: 'Your saved changes are already stored. Return to the forms list?',
+            title: 'Saved',
+            description: 'Your changes have been saved. Go back to the forms list?',
             confirmText: 'Go to list',
             cancelText: 'Stay',
         });
         if (ok) navigate('/forms');
-    };
+    }, [creator, frappeName, detail?.title, upsert, confirm, navigate, markSaved]);
 
-    const handleReset = async () => {
+    const handleReset = useCallback(async () => {
         if (!hasChanges) return;
         const ok = await confirm({
             title: 'Reset your changes?',
@@ -89,7 +101,17 @@ export default function EditForm() {
             variant: 'destructive',
         });
         if (ok) reset();
-    };
+    }, [hasChanges, confirm, reset]);
+
+    if (!frappeName) return null;
+
+    if (!enabled) {
+        return (
+            <div key={mode} className="container mx-auto px-4 py-8">
+                <p className="text-center text-gray-500">Loading form…</p>
+            </div>
+        );
+    }
 
     return (
         <div
@@ -99,36 +121,20 @@ export default function EditForm() {
         >
             <NavigationGuard
                 when={blockNavigation}
-                message={
-                    saveStatus === 'saving'
-                        ? 'A save is still in progress. If you leave now, your latest changes may be lost.'
-                        : 'You have unsaved changes. If you leave now, your latest edits will be lost.'
-                }
+                message="You have unsaved changes. If you leave now, your latest edits will be lost."
             />
 
             <div className="bg-white border-b border-gray-200 px-4 py-2 flex items-center justify-between shadow-sm">
-                <div className="flex items-center gap-3">
-                    <h2 className="text-lg font-semibold">Edit Form</h2>
-                    {saveStatus === 'saving' && (
-                        <span className="text-sm text-gray-500 animate-fadeIn">
-                            Changes are being saved...
-                        </span>
-                    )}
-                    {saveStatus === 'saved' && (
-                        <span className="text-sm text-gray-500 animate-fadeIn">
-                            Latest changes have been saved
-                        </span>
-                    )}
-                </div>
+                <h2 className="text-lg font-semibold">Edit Form</h2>
 
                 <div className="flex items-center gap-3">
                     <Button
-                        onClick={handleFinish}
+                        onClick={handleSave}
                         disabled={!hasChanges}
                         className="gap-2 disabled:opacity-50"
                     >
                         <Save className="h-4 w-4" />
-                        Finish Form
+                        Save Changes
                     </Button>
                     <Button
                         onClick={handleReset}

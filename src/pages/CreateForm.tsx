@@ -1,3 +1,4 @@
+// src/pages/forms/CreateForm.tsx
 import { useCallback, useMemo, useRef } from 'react';
 
 import { RotateCcw, Save } from 'lucide-react';
@@ -13,8 +14,23 @@ import { useFormRepositoryContext } from '@/hooks/context-hooks/use-formreposito
 import { useConfirm } from '@/hooks/use-confirm';
 import { useFormBuilder } from '@/hooks/use-form-builder';
 
-const defaultCreatorOptions: ICreatorOptions = { autoSaveEnabled: true, collapseOnDrag: true };
+import './CreateForm.css';
+
+const defaultCreatorOptions: ICreatorOptions = {
+    autoSaveEnabled: false, // 🔒 manual-save flow
+    collapseOnDrag: true,
+    showTranslationTab: true,
+};
 const defaultJson = { pages: [] };
+
+function slugify(s: string): string {
+    return (s || '')
+        .toLowerCase()
+        .trim()
+        .replace(/\s+/g, '-')
+        .replace(/[^a-z0-9-]/g, '')
+        .slice(0, 64);
+}
 
 export default function CreateForm(props: { json?: object; options?: ICreatorOptions }) {
     const navigate = useNavigate();
@@ -23,46 +39,62 @@ export default function CreateForm(props: { json?: object; options?: ICreatorOpt
     const { upsert } = repo.useUpsert();
 
     const storageKey = useMemo(() => `dl-form-${Date.now()}`, []);
-    const initialJson = JSON.stringify(props.json ?? defaultJson);
+    const initialJson = useMemo(() => JSON.stringify(props.json ?? defaultJson), [props.json]);
 
+    // After first successful save, store the server-assigned name so subsequent saves UPDATE
     const createdNameRef = useRef<string | null>(null);
 
-    const persistOnAutoSave = useCallback(
-        async ({ jsonText, title, slug }: { jsonText: string; title: string; slug: string }) => {
-            const res = await upsert({
-                name: createdNameRef.current,
-                title,
-                slug,
-                schemaJSON: jsonText,
-                changelog: 'Autosave',
-            });
-            if (!createdNameRef.current) {
-                createdNameRef.current = res.name;
-            }
-        },
-        [upsert],
-    );
+    const { creator, hasChanges, /* saveStatus removed */ reset, blockNavigation, markSaved } =
+        useFormBuilder({
+            mode: 'create',
+            initialJson,
+            storageKey,
+            options: props.options || defaultCreatorOptions,
+            // no onAutoSave in manual-save mode
+        });
 
-    const { creator, hasChanges, saveStatus, reset, blockNavigation } = useFormBuilder({
-        mode: 'create',
-        initialJson,
-        storageKey,
-        options: props.options || defaultCreatorOptions,
-        onAutoSave: persistOnAutoSave,
-    });
+    // Define callbacks before rendering (Rules of Hooks)
+    const handleCreate = useCallback(async () => {
+        if (!creator) return;
 
-    const handleFinish = async () => {
-        if (!hasChanges) return;
+        const jsonText: string = (creator as unknown as { text: string }).text;
+
+        // Extract title from JSON (fallback to Untitled)
+        let titleFromJson: string | undefined;
+        try {
+            const parsed = JSON.parse(jsonText) as { title?: string } | null;
+            titleFromJson = parsed?.title;
+        } catch {
+            // ignore
+        }
+        const title = titleFromJson || 'Untitled';
+        const slug = slugify(title);
+
+        const res = await upsert({
+            name: createdNameRef.current, // null on first save → create; thereafter → update
+            title,
+            slug,
+            schemaJSON: jsonText,
+            changelog: createdNameRef.current ? 'Manual update' : 'Manual create',
+        });
+
+        if (!createdNameRef.current) {
+            createdNameRef.current = res.name;
+        }
+
+        // Mark current JSON as saved so hasChanges flips to false
+        markSaved();
+
         const ok = await confirm({
-            title: 'Finish and go back?',
-            description: "You'll return to the forms list.",
+            title: 'Created',
+            description: 'Your form has been saved. Go to the forms list?',
             confirmText: 'Go to list',
             cancelText: 'Stay',
         });
         if (ok) navigate('/forms');
-    };
+    }, [creator, upsert, confirm, navigate, markSaved]);
 
-    const handleReset = async () => {
+    const handleReset = useCallback(async () => {
         if (!hasChanges) return;
         const ok = await confirm({
             title: 'Reset this form?',
@@ -72,7 +104,7 @@ export default function CreateForm(props: { json?: object; options?: ICreatorOpt
             variant: 'destructive',
         });
         if (ok) reset();
-    };
+    }, [hasChanges, confirm, reset]);
 
     return (
         <div
@@ -82,36 +114,20 @@ export default function CreateForm(props: { json?: object; options?: ICreatorOpt
         >
             <NavigationGuard
                 when={blockNavigation}
-                message={
-                    saveStatus === 'saving'
-                        ? 'A save is still in progress. If you leave now, your latest changes may be lost.'
-                        : 'You have unsaved changes. If you leave now, your latest edits will be lost.'
-                }
+                message="You have unsaved changes. If you leave now, your latest edits will be lost."
             />
 
             <div className="bg-white border-b border-gray-200 px-4 py-2 flex items-center justify-between shadow-sm">
-                <div className="flex items-center gap-3">
-                    <h2 className="text-lg font-semibold">Create Form</h2>
-                    {saveStatus === 'saving' && (
-                        <span className="text-sm text-gray-500 animate-fadeIn">
-                            Changes are being saved...
-                        </span>
-                    )}
-                    {saveStatus === 'saved' && (
-                        <span className="text-sm text-gray-500 animate-fadeIn">
-                            Latest changes have been saved
-                        </span>
-                    )}
-                </div>
+                <h2 className="text-lg font-semibold">Create Form</h2>
 
                 <div className="flex items-center gap-3">
                     <Button
-                        onClick={handleFinish}
+                        onClick={handleCreate}
                         disabled={!hasChanges}
                         className="gap-2 disabled:opacity-50"
                     >
                         <Save className="h-4 w-4" />
-                        Finish Form
+                        Create Form
                     </Button>
                     <Button
                         onClick={handleReset}

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 
-import { type ICreatorOptions } from 'survey-creator-core';
+import type { ICreatorOptions } from 'survey-creator-core';
 import { SurveyCreator } from 'survey-creator-react';
 
 type SaveStatus = 'saving' | 'saved' | null;
@@ -44,14 +44,13 @@ export function useFormBuilder({
     const [saveStatus, setSaveStatus] = useState<SaveStatus>(null);
 
     // 3) Baselines
-    const initialJsonRef = useRef<string>(''); // original snapshot (Reset compares to this)
-    const lastSavedJsonRef = useRef<string>(''); // last successfully saved value (for guard)
+    const initialJsonRef = useRef<string>(''); // snapshot of JSON at mount (or load)
+    const lastSavedJsonRef = useRef<string>(''); // snapshot of last successful save
 
     // 4) Timers
     const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const clearStatusTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-    // util
     const slugify = (s: string) =>
         (s || '')
             .toLowerCase()
@@ -60,53 +59,52 @@ export function useFormBuilder({
             .replace(/[^a-z0-9-]/g, '')
             .slice(0, 64);
 
-    // 5) Load initial JSON on mount
+    // 5) Load initial JSON on mount / when enabled toggles true
     useEffect(() => {
-        if (!enabled) return; // 🔐 guard
+        if (!enabled) return;
         creator.text = initialJson;
         initialJsonRef.current = initialJson;
-        lastSavedJsonRef.current = initialJson;
+        lastSavedJsonRef.current = initialJson; // 🔑 baseline = last saved
         setHasChanges(false);
         setSaveStatus(null);
-    }, [creator, storageKey, initialJson, enabled]); // storageKey in deps ensures if key changes (different form) we init fresh
+    }, [creator, storageKey, initialJson, enabled]);
 
     // 6) Register SurveyJS change listeners (debounced autosave)
     useEffect(() => {
-        if (!enabled) return; // 🔐 guard
+        if (!enabled) return;
 
         const handleChange = () => {
             const currentJson = creator.text;
-            setHasChanges(currentJson !== initialJsonRef.current);
+
+            // 🔑 Compare against last saved (not original) so this works with manual-save flows
+            setHasChanges(currentJson !== lastSavedJsonRef.current);
 
             if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
             if (clearStatusTimerRef.current) clearTimeout(clearStatusTimerRef.current);
 
-            // Only do work if changed since last successful save
-            if (currentJson !== lastSavedJsonRef.current) {
+            // Auto-save path (optional). Only run if the content differs from the last saved snapshot.
+            if (onAutoSave && currentJson !== lastSavedJsonRef.current) {
                 setSaveStatus('saving');
 
                 autoSaveTimerRef.current = setTimeout(async () => {
                     try {
-                        // Validate JSON
-                        JSON.parse(currentJson);
+                        JSON.parse(currentJson); // validate
 
-                        // 1) Local draft persistence (optional but handy)
+                        // 1) Local draft
                         localStorage.setItem(storageKey, currentJson);
 
-                        // 2) Server persistence via callback (FRAPPE)
-                        if (onAutoSave) {
-                            const title = creator.survey?.title || 'Untitled Form';
-                            const slug = slugify(title);
-                            // Await so the “saved” badge reflects the REAL persisted state
-                            await onAutoSave({ jsonText: currentJson, title, slug });
-                        }
+                        // 2) Server persistence via callback (await so status reflects true persistence)
+                        const title =
+                            (creator.JSON as { title?: string } | undefined)?.title ??
+                            'Untitled Form';
+                        const slug = slugify(title);
+                        await onAutoSave({ jsonText: currentJson, title, slug });
 
-                        // Mark saved
+                        // Mark saved (update baseline to the just-saved JSON)
                         lastSavedJsonRef.current = currentJson;
                         setHasChanges(false);
                         setSaveStatus('saved');
 
-                        // Keep the badge visible for a bit
                         clearStatusTimerRef.current = setTimeout(
                             () => setSaveStatus(null),
                             savedBadgeMs,
@@ -119,12 +117,17 @@ export function useFormBuilder({
             }
         };
 
+        // Creator-level signal when survey content changes in the designer
         creator.onModified.add(handleChange);
+        // Extra signal: property changes
         creator.onPropertyChanged.add(handleChange);
+        // Survey-level signal (belt & suspenders)
+        creator.survey.onPropertyChanged.add(handleChange);
 
         return () => {
             creator.onModified.remove(handleChange);
             creator.onPropertyChanged.remove(handleChange);
+            creator.survey.onPropertyChanged.remove(handleChange);
             if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
             if (clearStatusTimerRef.current) clearTimeout(clearStatusTimerRef.current);
         };
@@ -132,7 +135,7 @@ export function useFormBuilder({
 
     // 7) Reset back to the original snapshot
     const reset = () => {
-        if (!enabled) return; // 🔐 guard
+        if (!enabled) return;
         const original = initialJsonRef.current;
         creator.text = original;
         localStorage.setItem(storageKey, original);
@@ -143,25 +146,36 @@ export function useFormBuilder({
         clearStatusTimerRef.current = setTimeout(() => setSaveStatus(null), 1500);
     };
 
-    // 8) Block navigation if there are unsaved edits vs last save, or saving in progress
+    // 🔑 8) Public API for manual-save flows: mark current content as saved
+    const markSaved = () => {
+        if (!enabled) return;
+        const current = creator.text;
+        lastSavedJsonRef.current = current;
+        setHasChanges(false);
+    };
+
+    // 9) Block navigation if there are unsaved edits vs last saved, or saving in progress
     const unsavedVsLastSaved = enabled && creator.text !== lastSavedJsonRef.current;
     const blockNavigation = Boolean(unsavedVsLastSaved || saveStatus === 'saving');
 
-    // 9) Wire SurveyJS internal save (no-op so Creator doesn't hijack navigation)
+    // 10) Keep Creator from hijacking navigation (we manage saving ourselves)
     creator.saveSurveyFunc = (saveNo: number, callback: (n: number, ok: boolean) => void) => {
         callback(saveNo, true);
     };
 
     return {
         creator,
-        hasChanges,
+        hasChanges, // 🔄 based on lastSaved baseline
         saveStatus,
         reset,
         blockNavigation,
+        // expose helpers for manual-save flows
         getInitialJson: () => initialJsonRef.current,
         setInitialJson: (json: string) => {
             initialJsonRef.current = json;
-            setHasChanges(creator.text !== initialJsonRef.current);
+            // keep hasChanges consistent with baseline of lastSaved
+            setHasChanges(creator.text !== lastSavedJsonRef.current);
         },
+        markSaved, // 🔑 call this after a successful manual save
     };
 }

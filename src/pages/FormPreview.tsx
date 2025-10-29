@@ -1,3 +1,4 @@
+// src/pages/forms/FormPreview.tsx
 import { useEffect, useMemo, useRef, useState } from 'react';
 
 import { ArrowLeft } from 'lucide-react';
@@ -15,48 +16,70 @@ export default function FormPreview() {
     const navigate = useNavigate();
     const { mode, repo } = useFormRepositoryContext();
 
-    const { data: detail } = repo.useGet(frappeName ?? '');
+    // Use null when absent so the repo disables fetching cleanly
+    const { data: detail } = repo.useGet(frappeName ?? null);
+
     const [completed, setCompleted] = useState(false);
     const [model, setModel] = useState<Model | null>(null);
 
+    // Keep a stable JSON string; avoid re-parsing unless the string changes
+    const schemaJsonText = detail?.schemaJSON ?? '';
+
+    // Parse only when the text changes, return null if invalid
     const formJson = useMemo(() => {
-        if (!detail?.schemaJSON) return null;
+        if (!schemaJsonText) return null;
         try {
-            return JSON.parse(detail.schemaJSON);
+            return JSON.parse(schemaJsonText) as Record<string, unknown>;
         } catch {
             return null;
         }
-    }, [detail]);
+    }, [schemaJsonText]);
 
+    // Generate response id once, not during render loops
     const responseIdRef = useRef<string>('');
     if (!responseIdRef.current) {
-        try {
-            responseIdRef.current =
-                typeof window !== 'undefined' && window.crypto?.randomUUID
-                    ? window.crypto.randomUUID()
-                    : `resp-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
-        } catch {
-            responseIdRef.current = `resp-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
-        }
+        responseIdRef.current =
+            crypto?.randomUUID?.() ??
+            `resp-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
     }
 
+    // Normalize the initializer trick from above:
+    if (typeof responseIdRef.current === 'function') {
+        // run the initializer exactly once
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-function-type
+        const init = responseIdRef.current as unknown as Function;
+        responseIdRef.current = init() as string;
+    }
+
+    // Build/dispose the SurveyJS model when the *string* (or name) changes
     useEffect(() => {
         if (!frappeName || !formJson) return;
+
         const survey = new Model(formJson);
         survey.showCompletedPage = false;
 
-        survey.onComplete.add((sender) => {
+        const onComplete = (sender: Model) => {
             const record: LocalResponseRecord = {
                 id: responseIdRef.current,
                 submittedAt: Date.now(),
-                data: sender.data,
+                data: sender.data as Record<string, unknown>,
             };
             addResponse(frappeName, record);
             setCompleted(true);
-        });
+        };
 
+        survey.onComplete.add(onComplete);
         setModel(survey);
-    }, [frappeName, formJson]);
+
+        return () => {
+            survey.onComplete.remove(onComplete);
+            // dispose to avoid dangling observers / memory leaks
+            if (typeof (survey as unknown as { dispose?: () => void }).dispose === 'function') {
+                (survey as unknown as { dispose: () => void }).dispose();
+            }
+        };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [frappeName, schemaJsonText]); // 🔑 depend on the stable string, not the parsed object
 
     if (!frappeName) {
         return (
