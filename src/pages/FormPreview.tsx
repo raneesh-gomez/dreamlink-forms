@@ -1,8 +1,10 @@
 // src/pages/forms/FormPreview.tsx
 import { useEffect, useMemo, useRef, useState } from 'react';
 
-import { ArrowLeft } from 'lucide-react';
+import { useFrappeGetDoc, useFrappeUpdateDoc } from 'frappe-react-sdk';
+import { ArrowLeft, Download } from 'lucide-react';
 import { useNavigate, useParams } from 'react-router-dom';
+import { toast } from 'sonner';
 import { Model } from 'survey-core';
 import 'survey-core/survey-core.min.css';
 import { Survey } from 'survey-react-ui';
@@ -10,22 +12,80 @@ import { Survey } from 'survey-react-ui';
 import { Button } from '@/components/ui/button';
 import { useFormRepositoryContext } from '@/hooks/context-hooks/use-formrepository-context';
 import { type LocalResponseRecord, addResponse } from '@/lib/responses-local';
+import type { DLForm, DLFormStatus, DLFormVersion } from '@/types/frappe.types';
+
+const DOCTYPE = 'DL Form' as const;
+const STATUS_OPTIONS: DLFormStatus[] = ['Draft', 'Published', 'Archived'];
+
+/** Create a client-side download of text content as a file. */
+function downloadText(filename: string, content: string, mime: string = 'application/json'): void {
+    const blob = new Blob([content], { type: `${mime};charset=utf-8` });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    // Safari requires the element to be in the DOM
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+}
 
 export default function FormPreview() {
     const { frappeName } = useParams<{ frappeName: string }>();
     const navigate = useNavigate();
     const { mode, repo } = useFormRepositoryContext();
 
-    // Use null when absent so the repo disables fetching cleanly
+    // Baseline (summary) from repo to keep parity with rest of app
     const { data: detail } = repo.useGet(frappeName ?? null);
 
-    const [completed, setCompleted] = useState(false);
-    const [model, setModel] = useState<Model | null>(null);
+    // Full doc for versions & status
+    const safeName = frappeName ?? '__noop__';
+    const { data: fullDoc } = useFrappeGetDoc<DLForm>(DOCTYPE, safeName);
+    const { updateDoc } = useFrappeUpdateDoc<DLForm>();
 
-    // Keep a stable JSON string; avoid re-parsing unless the string changes
-    const schemaJsonText = detail?.schemaJSON ?? '';
+    // UI state
+    // selectedVersion: 0 => Latest (parent.schema_json). Otherwise, one of the child version numbers.
+    const [selectedVersion, setSelectedVersion] = useState<number>(0);
+    const [selectedStatus, setSelectedStatus] = useState<DLFormStatus>('Draft');
 
-    // Parse only when the text changes, return null if invalid
+    // Sync selectedStatus when doc loads/changes
+    useEffect(() => {
+        if (fullDoc?.status) {
+            setSelectedStatus(fullDoc.status);
+        }
+    }, [fullDoc?.status]);
+
+    // Version options
+    const versionOptions = useMemo(() => {
+        const versions = (fullDoc?.versions ?? []).slice().sort((a, b) => a.version - b.version);
+        const latest =
+            fullDoc?.current_version ??
+            (versions.length ? versions[versions.length - 1].version : 0);
+        return { list: versions, latest };
+    }, [fullDoc?.versions, fullDoc?.current_version]);
+
+    // Effective schema text for preview based on selection
+    const schemaJsonText: string = useMemo(() => {
+        if (!fullDoc) return '';
+        if (selectedVersion === 0) {
+            return typeof fullDoc.schema_json === 'string'
+                ? fullDoc.schema_json
+                : JSON.stringify(fullDoc.schema_json ?? {});
+        }
+        const match: DLFormVersion | undefined = (fullDoc.versions ?? []).find(
+            (v) => v.version === selectedVersion,
+        );
+        return match
+            ? typeof match.schema_json === 'string'
+                ? match.schema_json
+                : JSON.stringify(match.schema_json ?? {})
+            : typeof fullDoc.schema_json === 'string'
+              ? fullDoc.schema_json
+              : JSON.stringify(fullDoc.schema_json ?? {});
+    }, [fullDoc, selectedVersion]);
+
+    // Parse schema when the text changes
     const formJson = useMemo(() => {
         if (!schemaJsonText) return null;
         try {
@@ -35,7 +95,7 @@ export default function FormPreview() {
         }
     }, [schemaJsonText]);
 
-    // Generate response id once, not during render loops
+    // Response id stable
     const responseIdRef = useRef<string>('');
     if (!responseIdRef.current) {
         responseIdRef.current =
@@ -43,15 +103,10 @@ export default function FormPreview() {
             `resp-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
     }
 
-    // Normalize the initializer trick from above:
-    if (typeof responseIdRef.current === 'function') {
-        // run the initializer exactly once
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-function-type
-        const init = responseIdRef.current as unknown as Function;
-        responseIdRef.current = init() as string;
-    }
+    // Build Survey model when schema text changes
+    const [model, setModel] = useState<Model | null>(null);
+    const [completed, setCompleted] = useState(false);
 
-    // Build/dispose the SurveyJS model when the *string* (or name) changes
     useEffect(() => {
         if (!frappeName || !formJson) return;
 
@@ -73,13 +128,54 @@ export default function FormPreview() {
 
         return () => {
             survey.onComplete.remove(onComplete);
-            // dispose to avoid dangling observers / memory leaks
             if (typeof (survey as unknown as { dispose?: () => void }).dispose === 'function') {
                 (survey as unknown as { dispose: () => void }).dispose();
             }
         };
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [frappeName, schemaJsonText]); // 🔑 depend on the stable string, not the parsed object
+    }, [frappeName, schemaJsonText]);
+
+    // Handlers
+    const handleVersionChange: React.ChangeEventHandler<HTMLSelectElement> = (e) => {
+        const v = Number(e.target.value);
+        setCompleted(false);
+        setSelectedVersion(Number.isFinite(v) ? v : 0);
+    };
+
+    const handleStatusChange: React.ChangeEventHandler<HTMLSelectElement> = async (e) => {
+        const next = e.target.value as DLFormStatus;
+        setSelectedStatus(next); // optimistic
+        if (frappeName) {
+            try {
+                await updateDoc(DOCTYPE, frappeName, { status: next });
+                toast.success(`Form status updated to ${next}.`);
+            } catch {
+                toast.error('Failed to update form status.');
+            }
+        }
+    };
+
+    const handleDownload = (): void => {
+        if (!fullDoc) return;
+
+        // Decide effective version number for filename
+        const effectiveVersion =
+            selectedVersion === 0
+                ? fullDoc.current_version || versionOptions.latest || 1
+                : selectedVersion;
+
+        // Pretty-print the JSON if possible
+        let content = schemaJsonText;
+        try {
+            const parsed = JSON.parse(schemaJsonText) as unknown;
+            content = JSON.stringify(parsed, null, 2);
+        } catch {
+            // keep as-is if it's not valid JSON; still allow download
+        }
+
+        const safeName = fullDoc.name.replace(/[^\w.-]+/g, '_');
+        const filename = `${safeName}-v${effectiveVersion}.json`;
+        downloadText(filename, content, 'application/json');
+    };
 
     if (!frappeName) {
         return (
@@ -88,7 +184,7 @@ export default function FormPreview() {
             </div>
         );
     }
-    if (!detail) {
+    if (!detail || !fullDoc) {
         return (
             <div key={mode} className="container mx-auto px-4 py-8">
                 <div className="rounded-lg border p-6">Loading form…</div>
@@ -110,13 +206,64 @@ export default function FormPreview() {
         );
     }
 
+    const versions: DLFormVersion[] = versionOptions.list;
+    const latestLabel = `Latest (v${versionOptions.latest || fullDoc.current_version || 1})`;
+
     return (
         <div key={mode} className="container mx-auto px-4 py-8">
-            <div className="mb-4">
-                <Button variant="ghost" onClick={() => navigate(-1)} className="gap-2">
-                    <ArrowLeft className="h-4 w-4" />
-                    Back
-                </Button>
+            <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                <div className="flex items-center gap-2">
+                    <Button
+                        variant="ghost"
+                        onClick={() => navigate(-1)}
+                        className="gap-2 hover:cursor-pointer"
+                    >
+                        <ArrowLeft className="h-4 w-4" />
+                        Back
+                    </Button>
+                </div>
+
+                <div className="flex flex-col gap-3 md:flex-row md:items-center">
+                    {/* Version selector */}
+                    <label className="flex items-center gap-2">
+                        <span className="text-sm text-gray-600">Version</span>
+                        <select
+                            value={selectedVersion}
+                            onChange={handleVersionChange}
+                            className="rounded-md border px-2 py-1 text-sm"
+                        >
+                            <option value={0}>{latestLabel}</option>
+                            {versions.map((v) => (
+                                <option key={v.version} value={v.version}>
+                                    v{v.version}
+                                    {v.changelog ? ` – ${v.changelog}` : ''}
+                                </option>
+                            ))}
+                        </select>
+                    </label>
+
+                    {/* Status selector */}
+                    <label className="flex items-center gap-2">
+                        <span className="text-sm text-gray-600">Status</span>
+                        <select
+                            value={selectedStatus}
+                            onChange={handleStatusChange}
+                            className="rounded-md border px-2 py-1 text-sm"
+                        >
+                            {STATUS_OPTIONS.map((s) => (
+                                <option key={s} value={s}>
+                                    {s}
+                                </option>
+                            ))}
+                        </select>
+                    </label>
+
+                    {/* Export control */}
+                    <Button onClick={handleDownload} className="gap-2 hover:cursor-pointer">
+                        <Download className="h-4 w-4" />
+                        Export JSON
+                    </Button>
+                </div>
             </div>
 
             <Survey model={model} />
