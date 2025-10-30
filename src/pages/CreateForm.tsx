@@ -1,5 +1,4 @@
-// src/pages/forms/CreateForm.tsx
-import { useCallback, useMemo, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useRef } from 'react';
 
 import { RotateCcw, Save } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
@@ -9,7 +8,11 @@ import 'survey-creator-core/survey-creator-core.css';
 import { SurveyCreatorComponent } from 'survey-creator-react';
 
 import NavigationGuard from '@/components/common/NavigationGuard';
+import '@/components/surveyjs/location-picker/LocationPickerImpl';
+import '@/components/surveyjs/location-picker/LocationPickerQuestion';
+import '@/components/surveyjs/location-picker/location-picker.icon';
 import { Button } from '@/components/ui/button';
+import { SurveyJS } from '@/constants';
 import { useFormRepositoryContext } from '@/hooks/context-hooks/use-formrepository-context';
 import { useConfirm } from '@/hooks/use-confirm';
 import { useFormBuilder } from '@/hooks/use-form-builder';
@@ -17,7 +20,7 @@ import { useFormBuilder } from '@/hooks/use-form-builder';
 import './CreateForm.css';
 
 const defaultCreatorOptions: ICreatorOptions = {
-    autoSaveEnabled: false, // 🔒 manual-save flow
+    autoSaveEnabled: false,
     collapseOnDrag: true,
     showTranslationTab: true,
 };
@@ -50,8 +53,31 @@ export default function CreateForm(props: { json?: object; options?: ICreatorOpt
             initialJson,
             storageKey,
             options: props.options || defaultCreatorOptions,
-            // no onAutoSave in manual-save mode
         });
+
+    const addedToToolboxRef = useRef(false);
+    useEffect(() => {
+        if (!creator || addedToToolboxRef.current) return;
+
+        const exists = creator.toolbox.getItemByName?.(SurveyJS.LOCATION_PICKER_TYPE);
+        if (!exists) {
+            creator.toolbox.addItem({
+                name: SurveyJS.LOCATION_PICKER_TYPE,
+                title: 'Location Picker',
+                category: 'general',
+                iconName: 'icon-location-picker',
+                json: {
+                    type: SurveyJS.LOCATION_PICKER_TYPE,
+                    title: 'Select a location',
+                    defaultLat: 6.9271,
+                    defaultLng: 79.8612,
+                    defaultZoom: 7,
+                },
+            });
+        }
+
+        addedToToolboxRef.current = true;
+    }, [creator]);
 
     // Define callbacks before rendering (Rules of Hooks)
     const handleCreate = useCallback(async () => {

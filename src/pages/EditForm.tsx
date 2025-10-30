@@ -1,4 +1,4 @@
-import { useCallback, useMemo } from 'react';
+import { useCallback, useEffect, useMemo, useRef } from 'react';
 
 import { RotateCcw, Save } from 'lucide-react';
 import { useNavigate, useParams } from 'react-router-dom';
@@ -9,6 +9,7 @@ import { SurveyCreatorComponent } from 'survey-creator-react';
 
 import NavigationGuard from '@/components/common/NavigationGuard';
 import { Button } from '@/components/ui/button';
+import { SurveyJS } from '@/constants';
 import { useFormRepositoryContext } from '@/hooks/context-hooks/use-formrepository-context';
 import { useConfirm } from '@/hooks/use-confirm';
 import { useFormBuilder } from '@/hooks/use-form-builder';
@@ -51,8 +52,31 @@ export default function EditForm() {
         storageKey,
         options: creatorOptions,
         enabled,
-        // no onAutoSave in manual-save mode
     });
+
+    const addedToToolboxRef = useRef(false);
+    useEffect(() => {
+        if (!creator || addedToToolboxRef.current) return;
+
+        const exists = creator.toolbox.getItemByName?.(SurveyJS.LOCATION_PICKER_TYPE);
+        if (!exists) {
+            creator.toolbox.addItem({
+                name: SurveyJS.LOCATION_PICKER_TYPE,
+                title: 'Location Picker',
+                category: 'general',
+                iconName: 'icon-location-picker',
+                json: {
+                    type: SurveyJS.LOCATION_PICKER_TYPE,
+                    title: 'Select a location',
+                    defaultLat: 6.9271,
+                    defaultLng: 79.8612,
+                    defaultZoom: 7,
+                },
+            });
+        }
+
+        addedToToolboxRef.current = true;
+    }, [creator]);
 
     // Define callbacks before early returns (Rules of Hooks)
 
