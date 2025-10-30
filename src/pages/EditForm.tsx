@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef } from 'react';
 
 import { RotateCcw, Save } from 'lucide-react';
 import { useNavigate, useParams } from 'react-router-dom';
+import { toast } from 'sonner';
 import 'survey-core/survey-core.css';
 import type { ICreatorOptions } from 'survey-creator-core';
 import 'survey-creator-core/survey-creator-core.css';
@@ -95,24 +96,28 @@ export default function EditForm() {
 
         const safeTitle = titleFromJson || detail?.title || 'Untitled';
 
-        await upsert({
-            name: frappeName,
-            title: safeTitle,
-            slug: undefined, // keep slug unchanged during edit
-            schemaJSON: jsonText,
-            changelog: 'Manual save',
-        });
+        try {
+            await upsert({
+                name: frappeName,
+                title: safeTitle,
+                slug: undefined, // keep slug unchanged during edit
+                schemaJSON: jsonText,
+                changelog: 'Manual save',
+            });
 
-        // 🔑 mark current content as saved so hasChanges flips to false
-        markSaved();
+            // 🔑 mark current content as saved so hasChanges flips to false
+            markSaved();
 
-        const ok = await confirm({
-            title: 'Saved',
-            description: 'Your changes have been saved. Go back to the forms list?',
-            confirmText: 'Go to list',
-            cancelText: 'Stay',
-        });
-        if (ok) navigate('/forms');
+            const ok = await confirm({
+                title: 'Saved',
+                description: 'Your changes have been saved. Go back to the forms list?',
+                confirmText: 'Go to list',
+                cancelText: 'Stay',
+            });
+            if (ok) navigate('/forms');
+        } catch {
+            toast.error('Failed to save form. Please try again.');
+        }
     }, [creator, frappeName, detail?.title, upsert, confirm, navigate, markSaved]);
 
     const handleReset = useCallback(async () => {

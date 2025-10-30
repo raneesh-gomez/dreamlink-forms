@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef } from 'react';
 
+import type { FrappeError } from 'frappe-react-sdk';
 import { RotateCcw, Save } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { toast } from 'sonner';
 import 'survey-core/survey-core.css';
 import type { ICreatorOptions } from 'survey-creator-core';
 import 'survey-creator-core/survey-creator-core.css';
@@ -96,28 +98,38 @@ export default function CreateForm(props: { json?: object; options?: ICreatorOpt
         const title = titleFromJson || 'Untitled';
         const slug = slugify(title);
 
-        const res = await upsert({
-            name: createdNameRef.current, // null on first save → create; thereafter → update
-            title,
-            slug,
-            schemaJSON: jsonText,
-            changelog: createdNameRef.current ? 'Manual update' : 'Manual create',
-        });
+        try {
+            const res = await upsert({
+                name: createdNameRef.current, // null on first save → create; thereafter → update
+                title,
+                slug,
+                schemaJSON: jsonText,
+                changelog: createdNameRef.current ? 'Manual update' : 'Manual create',
+            });
+            if (!createdNameRef.current) {
+                createdNameRef.current = res.name;
+            }
 
-        if (!createdNameRef.current) {
-            createdNameRef.current = res.name;
+            // Mark current JSON as saved so hasChanges flips to false
+            markSaved();
+
+            const ok = await confirm({
+                title: 'Created',
+                description: 'Your form has been saved. Go to the forms list?',
+                confirmText: 'Go to list',
+                cancelText: 'Stay',
+            });
+            if (ok) navigate('/forms');
+        } catch (e) {
+            const error = e as FrappeError;
+            if (error?.exc_type === 'UniqueValidationError') {
+                toast.error(
+                    'A form with this name already exists. Please choose a different title.',
+                );
+                return;
+            }
+            toast.error('Failed to create form. Please try again.');
         }
-
-        // Mark current JSON as saved so hasChanges flips to false
-        markSaved();
-
-        const ok = await confirm({
-            title: 'Created',
-            description: 'Your form has been saved. Go to the forms list?',
-            confirmText: 'Go to list',
-            cancelText: 'Stay',
-        });
-        if (ok) navigate('/forms');
     }, [creator, upsert, confirm, navigate, markSaved]);
 
     const handleReset = useCallback(async () => {
