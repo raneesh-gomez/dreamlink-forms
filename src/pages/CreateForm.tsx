@@ -18,6 +18,7 @@ import { SurveyJS } from '@/constants';
 import { useFormRepositoryContext } from '@/hooks/context-hooks/use-formrepository-context';
 import { useConfirm } from '@/hooks/use-confirm';
 import { useFormBuilder } from '@/hooks/use-form-builder';
+import { diffEntries, extractTranslatables, toEnJson } from '@/i18n/extractor';
 
 import './CreateForm.css';
 
@@ -35,6 +36,15 @@ function slugify(s: string): string {
         .replace(/\s+/g, '-')
         .replace(/[^a-z0-9-]/g, '')
         .slice(0, 64);
+}
+
+function downloadJson(filename: string, data: object) {
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(a.href);
 }
 
 export default function CreateForm(props: { json?: object; options?: ICreatorOptions }) {
@@ -159,6 +169,58 @@ export default function CreateForm(props: { json?: object; options?: ICreatorOpt
                 <h2 className="text-lg font-semibold">Create Form</h2>
 
                 <div className="flex items-center gap-3">
+                    <input
+                        type="file"
+                        accept="application/json"
+                        className="hidden"
+                        id="prev-en-json"
+                        onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (!file) return;
+                            const reader = new FileReader();
+                            reader.onload = () => {
+                                try {
+                                    const prev = JSON.parse(String(reader.result) || '{}');
+                                    (window as any).__prevEnJson = prev; // stash for diff
+                                    toast.success('Loaded previous en.json for diff');
+                                } catch {
+                                    toast.error('Invalid en.json file');
+                                }
+                            };
+                            reader.readAsText(file);
+                        }}
+                    />
+
+                    <Button
+                        variant="secondary"
+                        onClick={() => {
+                            const surveyJson = creator.JSON || { pages: [] };
+                            const slug = (surveyJson?.slug as string) || 'unnamed'; // or get from your Frappe record
+                            const entries = extractTranslatables(surveyJson, slug);
+                            const full = toEnJson(entries);
+                            const prev = (window as any).__prevEnJson as
+                                | Record<string, { source: string; checksum: string }>
+                                | undefined;
+                            if (prev) {
+                                const diff = diffEntries(entries, prev);
+                                const filename = `${slug}-en-diff.json`;
+                                downloadJson(filename, diff);
+                            } else {
+                                const filename = `${slug}-en.json`;
+                                downloadJson(filename, full);
+                            }
+                        }}
+                        className="gap-2"
+                        title="Export source strings for translators (diff if a previous en.json was loaded)"
+                    >
+                        Export i18n (diff)
+                    </Button>
+
+                    <label htmlFor="prev-en-json" className="ml-2">
+                        <Button variant="outline" title="Load previous en.json to compute a diff">
+                            Load prev en.json
+                        </Button>
+                    </label>
                     <Button
                         onClick={handleCreate}
                         disabled={!hasChanges}

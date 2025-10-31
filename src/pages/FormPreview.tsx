@@ -11,6 +11,8 @@ import { Survey } from 'survey-react-ui';
 
 import { Button } from '@/components/ui/button';
 import { useFormRepositoryContext } from '@/hooks/context-hooks/use-formrepository-context';
+import { applyTranslations } from '@/i18n/apply';
+import { ensureSurveyLocale } from '@/i18n/surveyjs-locales';
 import { type LocalResponseRecord, addResponse } from '@/lib/responses-local';
 import type { DLForm, DLFormStatus, DLFormVersion } from '@/types/frappe.types';
 
@@ -35,6 +37,9 @@ export default function FormPreview() {
     const { frappeName } = useParams<{ frappeName: string }>();
     const navigate = useNavigate();
     const { mode, repo } = useFormRepositoryContext();
+
+    const [locale, setLocale] = useState<string>('en');
+    const [tDict, setTDict] = useState<Record<string, string>>({});
 
     // Baseline (summary) from repo to keep parity with rest of app
     const { data: detail } = repo.useGet(frappeName ?? null);
@@ -95,6 +100,21 @@ export default function FormPreview() {
         }
     }, [schemaJsonText]);
 
+    // Pick a stable slug for keying translations (prefer the form's slug, fall back to frappeName)
+    const surveySlug = useMemo(() => {
+        const fromDoc = (fullDoc as DLForm | undefined)?.slug?.trim();
+        return fromDoc || frappeName || 'unnamed';
+    }, [fullDoc?.slug, frappeName]);
+
+    // Apply translations (if any) to the parsed schema
+    const jsonForRender = useMemo(() => {
+        if (!formJson) return null;
+        if (tDict && Object.keys(tDict).length > 0) {
+            return applyTranslations(formJson, surveySlug, tDict);
+        }
+        return formJson;
+    }, [formJson, tDict, surveySlug]);
+
     // Response id stable
     const responseIdRef = useRef<string>('');
     if (!responseIdRef.current) {
@@ -108,10 +128,14 @@ export default function FormPreview() {
     const [completed, setCompleted] = useState(false);
 
     useEffect(() => {
-        if (!frappeName || !formJson) return;
+        if (!frappeName || !jsonForRender) return;
 
-        const survey = new Model(formJson);
+        // (Optional) ensure SurveyJS has UI chrome for this locale (if you use custom locales)
+        ensureSurveyLocale(locale);
+
+        const survey = new Model(jsonForRender);
         survey.showCompletedPage = false;
+        survey.locale = locale; // <-- set runtime UI language
 
         const onComplete = (sender: Model) => {
             const record: LocalResponseRecord = {
@@ -132,7 +156,8 @@ export default function FormPreview() {
                 (survey as unknown as { dispose: () => void }).dispose();
             }
         };
-    }, [frappeName, schemaJsonText]);
+        // IMPORTANT: depend on translated JSON and locale now
+    }, [frappeName, jsonForRender, locale]);
 
     // Handlers
     const handleVersionChange: React.ChangeEventHandler<HTMLSelectElement> = (e) => {
@@ -221,6 +246,43 @@ export default function FormPreview() {
                         <ArrowLeft className="h-4 w-4" />
                         Back
                     </Button>
+                </div>
+
+                <div className="flex items-center gap-2">
+                    <select
+                        value={locale}
+                        onChange={(e) => {
+                            setLocale(e.target.value);
+                        }}
+                        className="border rounded px-2 py-1"
+                        aria-label="Locale"
+                    >
+                        <option value="en">en</option>
+                        <option value="si">si</option>
+                        <option value="ta">ta</option>
+                        {/* add the locales you support */}
+                    </select>
+
+                    <input
+                        type="file"
+                        accept="application/json"
+                        id="locale-json"
+                        onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (!file) return;
+                            const reader = new FileReader();
+                            reader.onload = () => {
+                                try {
+                                    const parsed = JSON.parse(String(reader.result) || '{}');
+                                    setTDict(parsed); // expects flat { key: translatedText }
+                                    toast.success('Loaded locale dictionary');
+                                } catch {
+                                    toast.error('Invalid locale JSON');
+                                }
+                            };
+                            reader.readAsText(file);
+                        }}
+                    />
                 </div>
 
                 <div className="flex flex-col gap-3 md:flex-row md:items-center">
