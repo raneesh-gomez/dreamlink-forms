@@ -1,5 +1,0 @@
-window._env_ = {
-    "VITE_FRAPPE_URL": "",
-    "VITE_FRAPPE_TOKEN": "",
-    "VITE_GOOGLE_MAPS_API_KEY": ""
-};

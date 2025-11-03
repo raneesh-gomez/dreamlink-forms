@@ -5,8 +5,7 @@
     "type": "module",
     "scripts": {
         "dev": "vite",
-        "generate-env": "node ./generate-env-js.js",
-        "build": "node ./generate-env-js.js && tsc -b && vite build",
+        "build": "tsc -b && vite build",
         "lint": "eslint .",
         "preview": "vite preview",
         "format": "prettier --write .",
@@ -35,7 +34,6 @@
         "ace-builds": "^1.43.4",
         "class-variance-authority": "^0.7.1",
         "clsx": "^2.1.1",
-        "crypto-js": "^4.2.0",
         "date-fns": "^4.1.0",
         "frappe-react-sdk": "^1.13.0",
         "lucide-react": "^0.546.0",
@@ -57,7 +55,6 @@
     "devDependencies": {
         "@eslint/js": "^9.36.0",
         "@trivago/prettier-plugin-sort-imports": "^5.2.2",
-        "@types/crypto-js": "^4.2.2",
         "@types/google.maps": "^3.58.1",
         "@types/node": "^24.8.1",
         "@types/react": "^19.1.16",
