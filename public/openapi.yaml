@@ -1,0 +1,1029 @@
+openapi: 3.0.3
+info:
+    title: DreamLink Form Repository API
+    version: 0.1.0
+    description: >
+        Backend API for the DreamLink Form Repository.  
+        Acts like a "GitHub for forms" for FSPs (Financial Service Providers), with
+        endpoints for organizations, forms, versions, translations, assignments,
+        and sync endpoints for external apps.
+
+servers:
+    - url: http://localhost:3000
+      description: Local NestJS server
+
+tags:
+    - name: Organizations
+    - name: Forms
+    - name: Form Versions
+    - name: Translations
+    - name: Assignments
+    - name: Sync
+    - name: Health
+
+components:
+    securitySchemes:
+        bearerAuth:
+            type: http
+            scheme: bearer
+            bearerFormat: JWT
+            description: >
+                Keycloak-issued JWT. Send as `Authorization: Bearer <token>`.
+
+    security:
+        - bearerAuth: []
+
+    parameters:
+        FspId:
+            name: fspId
+            in: path
+            required: true
+            schema:
+                type: string
+            description: FSP (Financial Service Provider) identifier (tenant).
+        FormId:
+            name: formId
+            in: path
+            required: true
+            schema:
+                type: string
+            description: Unique form identifier within an FSP.
+        VersionId:
+            name: versionId
+            in: path
+            required: true
+            schema:
+                type: string
+            description: Unique version identifier for a form.
+        AssignmentId:
+            name: assignmentId
+            in: path
+            required: true
+            schema:
+                type: string
+            description: Assignment identifier.
+        Locale:
+            name: locale
+            in: path
+            required: true
+            schema:
+                type: string
+                example: en-US
+            description: IETF language tag for translations.
+        Page:
+            name: page
+            in: query
+            required: false
+            schema:
+                type: integer
+                minimum: 1
+                default: 1
+            description: Page number for paginated lists.
+        Limit:
+            name: limit
+            in: query
+            required: false
+            schema:
+                type: integer
+                minimum: 1
+                maximum: 200
+                default: 20
+            description: Page size for paginated lists.
+
+    schemas:
+        ErrorResponse:
+            type: object
+            properties:
+                statusCode:
+                    type: integer
+                error:
+                    type: string
+                message:
+                    oneOf:
+                        - type: string
+                        - type: array
+                          items:
+                              type: string
+
+        Fsp:
+            type: object
+            properties:
+                id:
+                    type: string
+                name:
+                    type: string
+                code:
+                    type: string
+                createdAt:
+                    type: string
+                    format: date-time
+                updatedAt:
+                    type: string
+                    format: date-time
+
+        Member:
+            type: object
+            properties:
+                id:
+                    type: string
+                email:
+                    type: string
+                displayName:
+                    type: string
+                roles:
+                    type: array
+                    items:
+                        type: string
+
+        Form:
+            type: object
+            properties:
+                id:
+                    type: string
+                fspId:
+                    type: string
+                name:
+                    type: string
+                slug:
+                    type: string
+                description:
+                    type: string
+                tags:
+                    type: array
+                    items:
+                        type: string
+                defaultLocale:
+                    type: string
+                    example: en-US
+                status:
+                    type: string
+                    enum: [active, archived]
+                currentPublishedVersionId:
+                    type: string
+                    nullable: true
+                createdBy:
+                    type: string
+                createdAt:
+                    type: string
+                    format: date-time
+                updatedAt:
+                    type: string
+                    format: date-time
+
+        FormCreateRequest:
+            type: object
+            required: [name, slug]
+            properties:
+                name:
+                    type: string
+                slug:
+                    type: string
+                description:
+                    type: string
+                tags:
+                    type: array
+                    items:
+                        type: string
+                defaultLocale:
+                    type: string
+                    example: en-US
+                initialJson:
+                    type: object
+                    description: Optional initial SurveyJS JSON definition.
+
+        FormUpdateRequest:
+            type: object
+            properties:
+                name:
+                    type: string
+                slug:
+                    type: string
+                description:
+                    type: string
+                tags:
+                    type: array
+                    items:
+                        type: string
+                defaultLocale:
+                    type: string
+                status:
+                    type: string
+                    enum: [active, archived]
+
+        FormCloneRequest:
+            type: object
+            properties:
+                newName:
+                    type: string
+                newSlug:
+                    type: string
+                includeHistory:
+                    type: boolean
+                    default: false
+            description: >
+                If includeHistory is false, only the current form schema is cloned,
+                excluding previous version history.
+
+        FormVersion:
+            type: object
+            properties:
+                id:
+                    type: string
+                formId:
+                    type: string
+                fspId:
+                    type: string
+                label:
+                    type: string
+                    description: Human-friendly version label (e.g. "v1.3").
+                status:
+                    type: string
+                    enum: [draft, pending_approval, approved, published, archived]
+                json:
+                    type: object
+                    description: SurveyJS JSON payload.
+                locales:
+                    type: array
+                    items:
+                        type: string
+                changeNote:
+                    type: string
+                createdBy:
+                    type: string
+                createdAt:
+                    type: string
+                    format: date-time
+                updatedAt:
+                    type: string
+                    format: date-time
+
+        FormVersionCreateRequest:
+            type: object
+            required: [json]
+            properties:
+                json:
+                    type: object
+                    description: Full SurveyJS JSON definition.
+                label:
+                    type: string
+                changeNote:
+                    type: string
+                locales:
+                    type: array
+                    items:
+                        type: string
+                    description: Supported locales, e.g. ["en-US", "fr-FR"].
+
+        TranslationDictionary:
+            type: object
+            additionalProperties:
+                type: string
+            description: >
+                Key-value pairs where keys are original SurveyJS strings and values
+                are translated strings in the given locale.
+
+        Assignment:
+            type: object
+            properties:
+                id:
+                    type: string
+                fspId:
+                    type: string
+                formId:
+                    type: string
+                versionId:
+                    type: string
+                assigneeType:
+                    type: string
+                    enum: [field_officer, group, region, financial_product]
+                assigneeId:
+                    type: string
+                startAt:
+                    type: string
+                    format: date-time
+                    nullable: true
+                endAt:
+                    type: string
+                    format: date-time
+                    nullable: true
+                required:
+                    type: boolean
+                channels:
+                    type: array
+                    items:
+                        type: string
+                createdBy:
+                    type: string
+                createdAt:
+                    type: string
+                    format: date-time
+
+        AssignmentCreateRequest:
+            type: object
+            required: [formId, assigneeType, assigneeId]
+            properties:
+                formId:
+                    type: string
+                versionId:
+                    type: string
+                    description: >
+                        Optional: if omitted, the currently Published version of the form is used.
+                assigneeType:
+                    type: string
+                    enum: [field_officer, group, region, financial_product]
+                assigneeId:
+                    type: string
+                startAt:
+                    type: string
+                    format: date-time
+                    nullable: true
+                endAt:
+                    type: string
+                    format: date-time
+                    nullable: true
+                required:
+                    type: boolean
+                    default: false
+                channels:
+                    type: array
+                    items:
+                        type: string
+                    description: e.g. ["mobile", "web"].
+
+        CatalogItem:
+            type: object
+            properties:
+                form:
+                    $ref: '#/components/schemas/Form'
+                version:
+                    $ref: '#/components/schemas/FormVersion'
+
+        CompiledFormPayload:
+            type: object
+            properties:
+                json:
+                    type: object
+                    description: Final, compiled SurveyJS JSON (with locale applied).
+                assets:
+                    type: array
+                    items:
+                        type: object
+                        properties:
+                            id:
+                                type: string
+                            url:
+                                type: string
+                            contentType:
+                                type: string
+                            hash:
+                                type: string
+
+security:
+    - bearerAuth: []
+
+paths:
+    /fsp:
+        get:
+            tags: [Organizations]
+            summary: List FSPs accessible to the current user
+            description: Fetch a list of FSPs (tenants) accessible to the current user.
+            parameters:
+                - $ref: '#/components/parameters/Page'
+                - $ref: '#/components/parameters/Limit'
+                - name: q
+                  in: query
+                  required: false
+                  schema:
+                      type: string
+                  description: Optional free-text search over FSP name or code.
+            responses:
+                '200':
+                    description: Paginated list of FSPs
+                    content:
+                        application/json:
+                            schema:
+                                type: object
+                                properties:
+                                    items:
+                                        type: array
+                                        items:
+                                            $ref: '#/components/schemas/Fsp'
+                                    page:
+                                        type: integer
+                                    limit:
+                                        type: integer
+                '401':
+                    description: Unauthorized
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ErrorResponse'
+
+    /fsp/{fspId}:
+        get:
+            tags: [Organizations]
+            summary: Get FSP details
+            description: Retrieve metadata about a specific FSP.
+            parameters:
+                - $ref: '#/components/parameters/FspId'
+            responses:
+                '200':
+                    description: FSP details
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Fsp'
+                '401':
+                    description: Unauthorized
+                '404':
+                    description: Not found
+
+    /fsp/{fspId}/members:
+        get:
+            tags: [Organizations]
+            summary: List FSP members
+            description: List users within an FSP with roles and permissions.
+            parameters:
+                - $ref: '#/components/parameters/FspId'
+                - $ref: '#/components/parameters/Page'
+                - $ref: '#/components/parameters/Limit'
+            responses:
+                '200':
+                    description: List of members with roles
+                    content:
+                        application/json:
+                            schema:
+                                type: object
+                                properties:
+                                    items:
+                                        type: array
+                                        items:
+                                            $ref: '#/components/schemas/Member'
+                                    page:
+                                        type: integer
+                                    limit:
+                                        type: integer
+                '401':
+                    description: Unauthorized
+
+    /fsp/{fspId}/forms:
+        get:
+            tags: [Forms]
+            summary: List forms under an FSP
+            description: Fetch a list of forms under an FSP (possibly with filters).
+            parameters:
+                - $ref: '#/components/parameters/FspId'
+                - $ref: '#/components/parameters/Page'
+                - $ref: '#/components/parameters/Limit'
+                - name: q
+                  in: query
+                  required: false
+                  schema:
+                      type: string
+                  description: Optional search term (name, slug, description).
+                - name: tag
+                  in: query
+                  required: false
+                  schema:
+                      type: string
+                  description: Filter by a single tag.
+                - name: status
+                  in: query
+                  required: false
+                  schema:
+                      type: string
+                      enum: [active, archived]
+                  description: Filter by high-level form status.
+            responses:
+                '200':
+                    description: Paginated list of forms
+                    content:
+                        application/json:
+                            schema:
+                                type: object
+                                properties:
+                                    items:
+                                        type: array
+                                        items:
+                                            $ref: '#/components/schemas/Form'
+                                    page:
+                                        type: integer
+                                    limit:
+                                        type: integer
+                '401':
+                    description: Unauthorized
+
+        post:
+            tags: [Forms]
+            summary: Create a new form
+            description: >
+                Create a new form with metadata such as name, slug, description, and
+                optional initial JSON schema.
+            parameters:
+                - $ref: '#/components/parameters/FspId'
+            requestBody:
+                required: true
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/FormCreateRequest'
+            responses:
+                '201':
+                    description: Form created
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Form'
+                '400':
+                    description: Validation error
+                '401':
+                    description: Unauthorized
+
+    /fsp/{fspId}/forms/{formId}:
+        get:
+            tags: [Forms]
+            summary: Get a specific form
+            description: Retrieve full metadata and current status of a specific form.
+            parameters:
+                - $ref: '#/components/parameters/FspId'
+                - $ref: '#/components/parameters/FormId'
+            responses:
+                '200':
+                    description: Form details
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Form'
+                '401':
+                    description: Unauthorized
+                '404':
+                    description: Not found
+
+        patch:
+            tags: [Forms]
+            summary: Update form metadata
+            description: >
+                Update form metadata, rename the form, or modify high-level status
+                fields (not the underlying JSON schema).
+            parameters:
+                - $ref: '#/components/parameters/FspId'
+                - $ref: '#/components/parameters/FormId'
+            requestBody:
+                required: true
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/FormUpdateRequest'
+            responses:
+                '200':
+                    description: Updated form
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Form'
+                '400':
+                    description: Validation error
+                '401':
+                    description: Unauthorized
+
+        delete:
+            tags: [Forms]
+            summary: Soft-delete/archive a form
+            description: Soft-delete or archive a form. Versions remain for history.
+            parameters:
+                - $ref: '#/components/parameters/FspId'
+                - $ref: '#/components/parameters/FormId'
+            responses:
+                '204':
+                    description: Form archived/deleted
+                '401':
+                    description: Unauthorized
+                '404':
+                    description: Not found
+
+    /fsp/{fspId}/forms/{formId}/clone:
+        post:
+            tags: [Forms]
+            summary: Clone an existing form
+            description: >
+                Clone an existing form, typically excluding the full version history
+                of the original form unless requested.
+            parameters:
+                - $ref: '#/components/parameters/FspId'
+                - $ref: '#/components/parameters/FormId'
+            requestBody:
+                required: false
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/FormCloneRequest'
+            responses:
+                '201':
+                    description: Cloned form
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Form'
+                '401':
+                    description: Unauthorized
+
+    /fsp/{fspId}/forms/{formId}/versions:
+        get:
+            tags: [Form Versions]
+            summary: List form versions
+            description: List all versions of a form (possibly with filters).
+            parameters:
+                - $ref: '#/components/parameters/FspId'
+                - $ref: '#/components/parameters/FormId'
+                - $ref: '#/components/parameters/Page'
+                - $ref: '#/components/parameters/Limit'
+                - name: status
+                  in: query
+                  required: false
+                  schema:
+                      type: string
+                      enum: [draft, pending_approval, approved, published, archived]
+                  description: Filter by version status.
+            responses:
+                '200':
+                    description: Paginated list of form versions
+                    content:
+                        application/json:
+                            schema:
+                                type: object
+                                properties:
+                                    items:
+                                        type: array
+                                        items:
+                                            $ref: '#/components/schemas/FormVersion'
+                                    page:
+                                        type: integer
+                                    limit:
+                                        type: integer
+                '401':
+                    description: Unauthorized
+
+        post:
+            tags: [Form Versions]
+            summary: Create a new form version
+            description: >
+                Create a new immutable version of a form with a SurveyJS JSON payload.
+            parameters:
+                - $ref: '#/components/parameters/FspId'
+                - $ref: '#/components/parameters/FormId'
+            requestBody:
+                required: true
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/FormVersionCreateRequest'
+            responses:
+                '201':
+                    description: Version created
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/FormVersion'
+                '400':
+                    description: Validation error
+                '401':
+                    description: Unauthorized
+
+    /fsp/{fspId}/forms/{formId}/versions/{versionId}:
+        get:
+            tags: [Form Versions]
+            summary: Get a specific form version
+            description: Retrieve a specific form version’s details including JSON and metadata.
+            parameters:
+                - $ref: '#/components/parameters/FspId'
+                - $ref: '#/components/parameters/FormId'
+                - $ref: '#/components/parameters/VersionId'
+            responses:
+                '200':
+                    description: Version details
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/FormVersion'
+                '401':
+                    description: Unauthorized
+                '404':
+                    description: Not found
+
+    /fsp/{fspId}/forms/{formId}/versions/{versionId}/publish:
+        post:
+            tags: [Form Versions]
+            summary: Publish a form version
+            description: >
+                Publish a form version and demote any previously published one to Draft.
+                Only one Published version is allowed per form.
+            parameters:
+                - $ref: '#/components/parameters/FspId'
+                - $ref: '#/components/parameters/FormId'
+                - $ref: '#/components/parameters/VersionId'
+            responses:
+                '200':
+                    description: Published version
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/FormVersion'
+                '401':
+                    description: Unauthorized
+                '404':
+                    description: Not found
+                '409':
+                    description: Conflict (e.g. publish rules violated)
+
+    /fsp/{fspId}/forms/{formId}/versions/{versionId}/archive:
+        post:
+            tags: [Form Versions]
+            summary: Archive a form version
+            description: Archive a form version so it is no longer distributable.
+            parameters:
+                - $ref: '#/components/parameters/FspId'
+                - $ref: '#/components/parameters/FormId'
+                - $ref: '#/components/parameters/VersionId'
+            responses:
+                '200':
+                    description: Archived version
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/FormVersion'
+                '401':
+                    description: Unauthorized
+                '404':
+                    description: Not found
+
+    /fsp/{fspId}/forms/{formId}/versions/{versionId}/validate:
+        post:
+            tags: [Form Versions]
+            summary: Validate a form version
+            description: Validate the form JSON for schema correctness and business logic rules.
+            parameters:
+                - $ref: '#/components/parameters/FspId'
+                - $ref: '#/components/parameters/FormId'
+                - $ref: '#/components/parameters/VersionId'
+            responses:
+                '200':
+                    description: Validation result
+                    content:
+                        application/json:
+                            schema:
+                                type: object
+                                properties:
+                                    valid:
+                                        type: boolean
+                                    errors:
+                                        type: array
+                                        items:
+                                            type: string
+                '401':
+                    description: Unauthorized
+
+    /fsp/{fspId}/forms/{formId}/versions/{versionId}/translations/{locale}:
+        get:
+            tags: [Translations]
+            summary: Get translation dictionary for a version and locale
+            description: Retrieve existing translation dictionaries for a version and locale.
+            parameters:
+                - $ref: '#/components/parameters/FspId'
+                - $ref: '#/components/parameters/FormId'
+                - $ref: '#/components/parameters/VersionId'
+                - $ref: '#/components/parameters/Locale'
+            responses:
+                '200':
+                    description: Translation dictionary
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/TranslationDictionary'
+                '401':
+                    description: Unauthorized
+                '404':
+                    description: Not found
+
+        put:
+            tags: [Translations]
+            summary: Upload translations for a form version
+            description: Upload translation dictionaries for a version and locale.
+            parameters:
+                - $ref: '#/components/parameters/FspId'
+                - $ref: '#/components/parameters/FormId'
+                - $ref: '#/components/parameters/VersionId'
+                - $ref: '#/components/parameters/Locale'
+            requestBody:
+                required: true
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/TranslationDictionary'
+            responses:
+                '204':
+                    description: Translations saved
+                '401':
+                    description: Unauthorized
+
+    /fsp/{fspId}/forms/{formId}/versions/{versionId}/compile:
+        post:
+            tags: [Translations]
+            summary: Compile form JSON with translations
+            description: >
+                Compile form JSON with selected locale translations into a runtime-ready payload.
+            parameters:
+                - $ref: '#/components/parameters/FspId'
+                - $ref: '#/components/parameters/FormId'
+                - $ref: '#/components/parameters/VersionId'
+                - name: locale
+                  in: query
+                  required: false
+                  schema:
+                      type: string
+                      example: en-US
+                  description: Locale to compile with; falls back to the form's defaultLocale.
+            responses:
+                '200':
+                    description: Compiled form JSON and asset manifest
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/CompiledFormPayload'
+                '401':
+                    description: Unauthorized
+                '404':
+                    description: Not found
+
+    /fsp/{fspId}/assignments:
+        post:
+            tags: [Assignments]
+            summary: Create an assignment
+            description: Assign a form version to a field officer, product, or group.
+            parameters:
+                - $ref: '#/components/parameters/FspId'
+            requestBody:
+                required: true
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/AssignmentCreateRequest'
+            responses:
+                '201':
+                    description: Assignment created
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Assignment'
+                '400':
+                    description: Validation error
+                '401':
+                    description: Unauthorized
+
+        get:
+            tags: [Assignments]
+            summary: List assignments
+            description: List active assignments (possibly with filters).
+            parameters:
+                - $ref: '#/components/parameters/FspId'
+                - $ref: '#/components/parameters/Page'
+                - $ref: '#/components/parameters/Limit'
+                - name: assigneeType
+                  in: query
+                  required: false
+                  schema:
+                      type: string
+                      enum: [field_officer, group, region, financial_product]
+                  description: Filter by assignee type.
+                - name: assigneeId
+                  in: query
+                  required: false
+                  schema:
+                      type: string
+                  description: Filter by a particular assignee.
+                - name: formId
+                  in: query
+                  required: false
+                  schema:
+                      type: string
+                  description: Filter by form.
+                - name: activeOn
+                  in: query
+                  required: false
+                  schema:
+                      type: string
+                      format: date-time
+                  description: Filter assignments active on a specific date/time.
+            responses:
+                '200':
+                    description: Paginated list of assignments
+                    content:
+                        application/json:
+                            schema:
+                                type: object
+                                properties:
+                                    items:
+                                        type: array
+                                        items:
+                                            $ref: '#/components/schemas/Assignment'
+                                    page:
+                                        type: integer
+                                    limit:
+                                        type: integer
+                '401':
+                    description: Unauthorized
+
+    /fsp/{fspId}/assignments/{assignmentId}:
+        delete:
+            tags: [Assignments]
+            summary: Delete or deactivate an assignment
+            description: Remove or deactivate an assignment.
+            parameters:
+                - $ref: '#/components/parameters/FspId'
+                - $ref: '#/components/parameters/AssignmentId'
+            responses:
+                '204':
+                    description: Assignment deleted/deactivated
+                '401':
+                    description: Unauthorized
+                '404':
+                    description: Not found
+
+    /sync/fsp/{fspId}/catalog:
+        get:
+            tags: [Sync]
+            summary: Get sync catalog of published forms
+            description: >
+                Return a filtered list of published forms and versions visible to the
+                caller/requester. Main endpoint for external apps to sync available forms.
+            parameters:
+                - $ref: '#/components/parameters/FspId'
+                - name: since
+                  in: query
+                  required: false
+                  schema:
+                      type: string
+                  description: Optional timestamp or token for incremental catalog sync.
+            responses:
+                '200':
+                    description: Sync catalog of published forms and versions
+                    content:
+                        application/json:
+                            schema:
+                                type: object
+                                properties:
+                                    items:
+                                        type: array
+                                        items:
+                                            $ref: '#/components/schemas/CatalogItem'
+                                    since:
+                                        type: string
+                '401':
+                    description: Unauthorized
+
+    /sync/fsp/{fspId}/forms/{formId}/versions/{versionId}:
+        get:
+            tags: [Sync]
+            summary: Get compiled form for sync clients
+            description: >
+                Retrieve compiled JSON form ready for rendering. Fetches the final form
+                definition for sync clients like the field officer app.
+            parameters:
+                - $ref: '#/components/parameters/FspId'
+                - $ref: '#/components/parameters/FormId'
+                - $ref: '#/components/parameters/VersionId'
+                - name: locale
+                  in: query
+                  required: false
+                  schema:
+                      type: string
+                      example: en-US
+                  description: Locale to compile with; falls back to defaults if omitted.
+            responses:
+                '200':
+                    description: Compiled form definition
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/CompiledFormPayload'
+                '401':
+                    description: Unauthorized
+                '404':
+                    description: Not found
+
+    /health:
+        get:
+            security: []
+            tags: [Health]
+            summary: Health check endpoint
+            description: Health check endpoint to confirm service status.
+            responses:
+                '200':
+                    description: Service is healthy
+                    content:
+                        application/json:
+                            schema:
+                                type: object
+                                properties:
+                                    status:
+                                        type: string
+                                        example: ok

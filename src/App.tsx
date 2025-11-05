@@ -3,6 +3,7 @@ import { Toaster } from 'sonner';
 
 import Navbar from './components/layout/Navbar';
 import { useFrappeProbe } from './hooks/use-frappe-probe';
+import ApiDocs from './pages/ApiDocs';
 import CreateForm from './pages/CreateForm';
 import EditForm from './pages/EditForm';
 import FormList from './pages/FormList';
@@ -29,6 +30,7 @@ function App() {
                         <Route path="/forms/:frappeName" element={<FormPreview />} />
                         <Route path="/forms/:frappeName/edit" element={<EditForm />} />
                         <Route path="/forms/:frappeName/responses" element={<FormResponses />} />
+                        <Route path="/api-docs" element={<ApiDocs />} />
                         <Route path="*" element={<Navigate to="/forms/create" replace />} />
                     </Routes>
                 </main>
