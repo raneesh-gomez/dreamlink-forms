@@ -10,6 +10,7 @@ import 'survey-creator-core/survey-creator-core.css';
 import { SurveyCreatorComponent } from 'survey-creator-react';
 
 import NavigationGuard from '@/components/common/NavigationGuard';
+import { initializeDreamLinkIdProperty } from '@/components/surveyjs/custom-properties/dreamlink-id';
 import '@/components/surveyjs/location-picker/LocationPickerImpl';
 import '@/components/surveyjs/location-picker/LocationPickerQuestion';
 import '@/components/surveyjs/location-picker/location-picker.icon';
@@ -61,6 +62,9 @@ export default function CreateForm(props: { json?: object; options?: ICreatorOpt
     useEffect(() => {
         if (!creator || addedToToolboxRef.current) return;
 
+        // Initialize DreamLink ID custom property for all questions
+        initializeDreamLinkIdProperty();
+
         const exists = creator.toolbox.getItemByName?.(SurveyJS.LOCATION_PICKER_TYPE);
         if (!exists) {
             creator.toolbox.addItem({
@@ -77,6 +81,29 @@ export default function CreateForm(props: { json?: object; options?: ICreatorOpt
                 },
             });
         }
+
+        // Remove unwanted question types from toolbox
+        // All available items are listed here: https://surveyjs.io/form-library/documentation/api-reference/question#getType
+        creator.toolbox.removeItem('html');
+
+        // Remove unwanted properties from Property Grid
+        // All available properties are listed here: https://surveyjs.io/form-library/documentation/api-reference/question#isQuestion:~:text=filter%20the%20list...-,Properties,-clearIfInvisible
+        creator.onShowingProperty.add((_sender, options) => {
+            // Hide the 'choicesOrder' property for all question types
+            if (options.property.name === 'description') {
+                options.canShow = false;
+            }
+
+            // Hide specific properties for a particular question type
+            // if (options.obj.getType() === "text" && options.property.name === "maxLength") {
+            //     options.canShow = false;
+            // }
+        });
+
+        // Make the JSON tab read-only
+        creator.onActiveTabChanging.add((_sender, options) => {
+            creator.readOnly = options.tabName === 'json';
+        });
 
         addedToToolboxRef.current = true;
     }, [creator]);

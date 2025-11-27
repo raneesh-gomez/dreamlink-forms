@@ -1,0 +1,1364 @@
+openapi: 3.0.0
+info:
+  title: DreamLink Form Repository API
+  version: 0.5.0
+  description: >
+    Backend API for the DreamLink Form Repository. Forms are owned and managed
+    under individual users. Endpoints cover forms, versions, translations,
+    compile, sync, and health.
+
+servers:
+  - url: http://localhost:3000
+    description: Local NestJS server
+
+tags:
+  - name: Forms
+  - name: Form Versions
+  - name: Translations
+  - name: Sync
+  - name: Health
+
+security:
+  - bearerAuth: []
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: >
+        Send as `Authorization: Bearer <token>` (Keycloak JWT).
+
+  parameters:
+    UserId:
+      name: userId
+      in: path
+      required: true
+      schema: { type: string }
+      description: Identifier of the user that owns the forms.
+    FormId:
+      name: formId
+      in: path
+      required: true
+      schema: { type: string }
+      description: Unique form identifier under a user.
+    VersionId:
+      name: versionId
+      in: path
+      required: true
+      schema: { type: string }
+      description: Unique version identifier for a form.
+    LocalePath:
+      name: locale
+      in: path
+      required: true
+      schema:
+        type: string
+        example: en-US
+      description: IETF language tag (BCP-47).
+    Page:
+      name: page
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+        default: 1
+      description: Page number (1-based).
+    Limit:
+      name: limit
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 200
+        default: 20
+      description: Page size.
+    OrderBy:
+      name: orderBy
+      in: query
+      schema:
+        type: string
+      description: Field to order by (e.g., `name`, `updatedAt`).
+    OrderDirection:
+      name: orderDirection
+      in: query
+      schema:
+        type: string
+        enum: [asc, desc]
+        default: desc
+      description: Sort direction.
+
+  schemas:
+    ErrorResponse:
+      type: object
+      properties:
+        statusCode: { type: integer }
+        error: { type: string }
+        message:
+          oneOf:
+            - { type: string }
+            - type: array
+              items: { type: string }
+
+    Pagination:
+      type: object
+      required: [page, limit, total]
+      properties:
+        page:
+          type: integer
+          example: 1
+        limit:
+          type: integer
+          example: 20
+        total:
+          type: integer
+          example: 134
+      description: Pagination metadata for list responses.
+
+    PaginatedResponse:
+      type: object
+      required: [items, pagination]
+      properties:
+        items:
+          type: array
+          description: List of entities for this page.
+          items: {}
+        pagination:
+          $ref: '#/components/schemas/Pagination'
+      description: Reusable wrapper for paginated list endpoints.
+
+    Form:
+      type: object
+      required: [id, userId, name, slug, status, createdAt, updatedAt]
+      properties:
+        id: { type: string }
+        userId: { type: string }
+        name: { type: string }
+        slug: { type: string }
+        description: { type: string }
+        tags:
+          type: array
+          items: { type: string }
+        defaultLocale:
+          type: string
+          example: en-US
+        status:
+          type: string
+          enum: [active, archived]
+        currentPublishedVersionId:
+          type: string
+          nullable: true
+        createdBy: { type: string }
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    FormCreateRequest:
+      type: object
+      required: [name, slug]
+      properties:
+        name: { type: string }
+        slug: { type: string }
+        description: { type: string }
+        tags:
+          type: array
+          items: { type: string }
+        defaultLocale:
+          type: string
+          example: en-US
+        initialJson:
+          type: object
+          description: Optional initial SurveyJS JSON.
+
+    FormUpdateRequest:
+      type: object
+      properties:
+        name: { type: string }
+        slug: { type: string }
+        description: { type: string }
+        tags:
+          type: array
+          items: { type: string }
+        defaultLocale: { type: string }
+        status:
+          type: string
+          enum: [active, archived]
+
+    FormCloneRequest:
+      type: object
+      properties:
+        newName: { type: string }
+        newSlug: { type: string }
+        includeHistory:
+          type: boolean
+          default: false
+      description: If false, only current schema is cloned (no history).
+
+    FormVersion:
+      type: object
+      required: [id, formId, userId, status, json, createdAt, updatedAt]
+      properties:
+        id: { type: string }
+        formId: { type: string }
+        userId: { type: string }
+        label:
+          type: string
+          description: Human-friendly label (e.g., v1.3).
+        status:
+          type: string
+          enum: [draft, published, archived]
+        json:
+          type: object
+          description: SurveyJS JSON payload.
+        locales:
+          type: array
+          items: { type: string }
+        changeNote: { type: string }
+        createdBy: { type: string }
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    FormVersionCreateRequest:
+      type: object
+      required: [json]
+      properties:
+        json:
+          type: object
+          description: Full SurveyJS JSON definition.
+        label: { type: string }
+        changeNote: { type: string }
+        locales:
+          type: array
+          items: { type: string }
+          description: Supported locales, e.g., ["en-US","fr-FR"].
+
+    TranslationDictionary:
+      type: object
+      additionalProperties: { type: string }
+      description: Key-value map of original string ➝ translated string.
+
+    CatalogItem:
+      type: object
+      properties:
+        form: { $ref: '#/components/schemas/Form' }
+        version: { $ref: '#/components/schemas/FormVersion' }
+
+    CompiledFormPayload:
+      type: object
+      properties:
+        json:
+          type: object
+          description: Final SurveyJS JSON with locale applied.
+        assets:
+          type: array
+          items:
+            type: object
+            properties:
+              id: { type: string }
+              url: { type: string }
+              contentType: { type: string }
+              hash: { type: string }
+
+paths:
+  /health:
+    get:
+      security: []
+      tags: [Health]
+      summary: Health check
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ok
+
+  /user/{userId}/forms:
+    get:
+      tags: [Forms]
+      summary: List forms under a user
+      description: Fetch a list of forms under a user (with filters).
+      parameters:
+        - $ref: '#/components/parameters/UserId'
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/OrderBy'
+        - $ref: '#/components/parameters/OrderDirection'
+        - name: search
+          in: query
+          schema: { type: string }
+          description: Optional search term (name, slug, or description).
+        - name: tag
+          in: query
+          schema: { type: string }
+          description: Filter by a single tag.
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [active, archived]
+          description: Filter by form status.
+      responses:
+        '200':
+          description: Paginated list of forms
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/PaginatedResponse'
+                  - type: object
+                    properties:
+                      items:
+                        items:
+                          $ref: '#/components/schemas/Form'
+        '401':
+          description: Unauthorized
+    post:
+      tags: [Forms]
+      summary: Create a new form
+      description: Create a form with metadata and optional initial JSON.
+      parameters:
+        - $ref: '#/components/parameters/UserId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/FormCreateRequest' }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Form' }
+        '400':
+          description: Validation error
+        '401':
+          description: Unauthorized
+
+  /user/{userId}/forms/{formId}:
+    get:
+      tags: [Forms]
+      summary: Get a specific form
+      parameters:
+        - $ref: '#/components/parameters/UserId'
+        - $ref: '#/components/parameters/FormId'
+      responses:
+        '200':
+          description: Form details
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Form' }
+        '401':
+          description: Unauthorized
+        '404':
+          description: Not found
+    patch:
+      tags: [Forms]
+      summary: Update form metadata
+      description: Modify metadata or high-level status (not JSON schema).
+      parameters:
+        - $ref: '#/components/parameters/UserId'
+        - $ref: '#/components/parameters/FormId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/FormUpdateRequest' }
+      responses:
+        '200':
+          description: Updated
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Form' }
+        '400':
+          description: Validation error
+        '401':
+          description: Unauthorized
+        '404':
+          description: Not found
+    delete:
+      tags: [Forms]
+      summary: Soft-delete/archive a form
+      parameters:
+        - $ref: '#/components/parameters/UserId'
+        - $ref: '#/components/parameters/FormId'
+      responses:
+        '204':
+          description: Deleted/archived
+        '401':
+          description: Unauthorized
+        '404':
+          description: Not found
+
+  /user/{userId}/forms/{formId}/clone:
+    post:
+      tags: [Forms]
+      summary: Clone an existing form
+      description: Clone an existing form (history excluded unless requested).
+      parameters:
+        - $ref: '#/components/parameters/UserId'
+        - $ref: '#/components/parameters/FormId'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/FormCloneRequest' }
+      responses:
+        '201':
+          description: Cloned form
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Form' }
+        '401':
+          description: Unauthorized
+        '404':
+          description: Not found
+
+  /user/{userId}/forms/{formId}/versions:
+    get:
+      tags: [Form Versions]
+      summary: List form versions
+      parameters:
+        - $ref: '#/components/parameters/UserId'
+        - $ref: '#/components/parameters/FormId'
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/OrderBy'
+        - $ref: '#/components/parameters/OrderDirection'
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [draft, published, archived]
+          description: Filter by version status.
+      responses:
+        '200':
+          description: Paginated list of versions
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/PaginatedResponse'
+                  - type: object
+                    properties:
+                      items:
+                        items:
+                          $ref: '#/components/schemas/FormVersion'
+        '401':
+          description: Unauthorized
+    post:
+      tags: [Form Versions]
+      summary: Create a new form version
+      parameters:
+        - $ref: '#/components/parameters/UserId'
+        - $ref: '#/components/parameters/FormId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/FormVersionCreateRequest' }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/FormVersion' }
+        '400':
+          description: Validation error
+        '401':
+          description: Unauthorized
+
+  /user/{userId}/forms/{formId}/versions/{versionId}:
+    get:
+      tags: [Form Versions]
+      summary: Get a specific form version
+      parameters:
+        - $ref: '#/components/parameters/UserId'
+        - $ref: '#/components/parameters/FormId'
+        - $ref: '#/components/parameters/VersionId'
+      responses:
+        '200':
+          description: Version details
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/FormVersion' }
+        '401':
+          description: Unauthorized
+        '404':
+          description: Not found
+
+  /user/{userId}/forms/{formId}/versions/{versionId}/publish:
+    post:
+      tags: [Form Versions]
+      summary: Publish a form version
+      description: >
+        Publish a version and demote any previously published one to Draft.
+        Only one Published version is allowed per form.
+      parameters:
+        - $ref: '#/components/parameters/UserId'
+        - $ref: '#/components/parameters/FormId'
+        - $ref: '#/components/parameters/VersionId'
+      responses:
+        '200':
+          description: Published
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/FormVersion' }
+        '401':
+          description: Unauthorized
+        '404':
+          description: Not found
+        '409':
+          description: Conflict (rule violation)
+
+  /user/{userId}/forms/{formId}/versions/{versionId}/archive:
+    post:
+      tags: [Form Versions]
+      summary: Archive a form version
+      parameters:
+        - $ref: '#/components/parameters/UserId'
+        - $ref: '#/components/parameters/FormId'
+        - $ref: '#/components/parameters/VersionId'
+      responses:
+        '200':
+          description: Archived
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/FormVersion' }
+        '401':
+          description: Unauthorized
+        '404':
+          description: Not found
+
+  /user/{userId}/forms/{formId}/versions/{versionId}/validate:
+    post:
+      tags: [Form Versions]
+      summary: Validate a form version
+      description: Validate JSON for schema correctness and business rules.
+      parameters:
+        - $ref: '#/components/parameters/UserId'
+        - $ref: '#/components/parameters/FormId'
+        - $ref: '#/components/parameters/VersionId'
+      responses:
+        '200':
+          description: Validation result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  valid: { type: boolean }
+                  errors:
+                    type: array
+                    items: { type: string }
+        '401':
+          description: Unauthorized
+        '404':
+          description: Not found
+
+  /user/{userId}/forms/{formId}/versions/{versionId}/translations/{locale}:
+    get:
+      tags: [Translations]
+      summary: Get translation dictionary
+      parameters:
+        - $ref: '#/components/parameters/UserId'
+        - $ref: '#/components/parameters/FormId'
+        - $ref: '#/components/parameters/VersionId'
+        - $ref: '#/components/parameters/LocalePath'
+      responses:
+        '200':
+          description: Dictionary
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TranslationDictionary' }
+        '401':
+          description: Unauthorized
+        '404':
+          description: Not found
+    put:
+      tags: [Translations]
+      summary: Upload translation dictionary
+      parameters:
+        - $ref: '#/components/parameters/UserId'
+        - $ref: '#/components/parameters/FormId'
+        - $ref: '#/components/parameters/VersionId'
+        - $ref: '#/components/parameters/LocalePath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TranslationDictionary' }
+      responses:
+        '204':
+          description: Saved
+        '401':
+          description: Unauthorized
+        '404':
+          description: Not found
+
+  /user/{userId}/forms/{formId}/versions/{versionId}/compile:
+    post:
+      tags: [Translations]
+      summary: Compile form JSON with translations
+      description: Return compiled SurveyJS JSON ready for rendering.
+      parameters:
+        - $ref: '#/components/parameters/UserId'
+        - $ref: '#/components/parameters/FormId'
+        - $ref: '#/components/parameters/VersionId'
+        - name: locale
+          in: query
+          schema:
+            type: string
+            example: en-US
+          description: Locale to compile with (falls back to default).
+      responses:
+        '200':
+          description: Compiled payload
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CompiledFormPayload' }
+        '401':
+          description: Unauthorized
+        '404':
+          description: Not found
+
+  /sync/user/{userId}/forms:
+    get:
+      tags: [Sync]
+      summary: Get sync catalog of published forms
+      description: >
+        Returns a filtered list of published forms and versions visible to the caller.
+      parameters:
+        - $ref: '#/components/parameters/UserId'
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/OrderBy'
+        - $ref: '#/components/parameters/OrderDirection'
+        - name: since
+          in: query
+          schema: { type: string }
+          description: Optional timestamp/token for incremental sync.
+      responses:
+        '200':
+          description: Paginated sync catalog
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/PaginatedResponse'
+                  - type: objectopenapi: 3.0.0
+info:
+  title: DreamLink Form Repository API
+  version: 0.3.0
+  description: >
+    Backend API for the DreamLink Form Repository.
+
+    Forms are owned and managed under individual users.
+
+    Endpoints cover forms, versions, translations, compile, sync, and health.
+
+servers:
+  - url: http://localhost:3000
+    description: Local server
+
+tags:
+  - name: Forms
+  - name: Form Versions
+  - name: Translations
+  - name: Sync
+  - name: Health
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: > 
+        Send as `Authorization: Bearer <token>` (Keycloak JWT).
+
+  parameters:
+    UserId:
+      name: userId
+      in: path
+      required: true
+      schema: { type: string }
+      description: Identifier of the user that owns the forms.
+    FormId:
+      name: formId
+      in: path
+      required: true
+      schema: { type: string }
+      description: Unique form identifier under a user.
+    VersionId:
+      name: versionId
+      in: path
+      required: true
+      schema: { type: string }
+      description: Unique version identifier for a form.
+    LocalePath:
+      name: locale
+      in: path
+      required: true
+      schema:
+        type: string
+        example: en-US
+      description: IETF language tag.
+    Page:
+      name: page
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+        default: 1
+      description: Page number (1-based).
+    Limit:
+      name: limit
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 200
+        default: 20
+      description: Page size.
+    OrderBy:
+      name: orderBy
+      in: query
+      schema:
+        type: string
+      description: >
+        Field name to order by (e.g., `name`, `updatedAt`). Server may validate/whitelist.
+    OrderDirection:
+      name: orderDirection
+      in: query
+      schema:
+        type: string
+        enum: [asc, desc]
+        default: desc
+      description: Sort direction.
+
+  schemas:
+    ErrorResponse:
+      type: object
+      properties:
+        statusCode: { type: integer }
+        error: { type: string }
+        message:
+          oneOf:
+            - { type: string }
+            - type: array
+              items: { type: string }
+
+    Form:
+      type: object
+      required: [id, name, slug, sourceLocale, latestVersion, createdBy, createdAt, updatedAt]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        slug: { type: string }
+        description: 
+          type: string
+          nullable: true
+        sourceLocale:
+          type: string
+          example: en-US
+        publishedVersion:
+          type: object
+          nullable: true
+          required: [id, version, schemaJson]
+          properties:
+            id: { type: string }
+            version: { type: integer }
+            schemaJson:
+              type: object
+              description: The published JSON schema
+        latestVersion:
+          type: object
+          required: [id, version, schemaJson]
+          properties:
+            id: { type: string }
+            version: { type: integer }
+            schemaJson:
+              type: object
+              description: The latest JSON schema
+        createdBy: { type: string }
+        updatedBy:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    FormCreateRequest:
+      type: object
+      required: [name, slug]
+      properties:
+        name: { type: string }
+        slug: { type: string }
+        description: { type: string }
+        sourceLocale:
+          type: string
+          example: en-US
+        schemaJson:
+          type: object
+          description: Initial SurveyJS JSON schema.
+
+    FormUpdateRequest:
+      type: object
+      properties:
+        name: { type: string }
+        slug: { type: string }
+        description: { type: string }
+        sourceLocale: { type: string }
+
+    FormCloneRequest:
+      type: object
+      properties:
+        newName: { type: string }
+        newSlug: { type: string }
+        includeHistory:
+          type: boolean
+          default: false
+      description: If false, only current schema is cloned (no history).
+
+    FormVersion:
+      type: object
+      required: [id, formId, userId, status, json, createdAt, updatedAt]
+      properties:
+        id: { type: string }
+        formId: { type: string }
+        userId: { type: string }
+        label:
+          type: string
+          description: Human-friendly label (e.g., v1.3).
+        status:
+          type: string
+          enum: [draft, published, archived]
+        json:
+          type: object
+          description: SurveyJS JSON payload.
+        locales:
+          type: array
+          items: { type: string }
+        changeNote: { type: string }
+        createdBy: { type: string }
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    FormVersionCreateRequest:
+      type: object
+      required: [json]
+      properties:
+        json:
+          type: object
+          description: Full SurveyJS JSON definition.
+        label: { type: string }
+        changeNote: { type: string }
+        locales:
+          type: array
+          items: { type: string }
+          description: Supported locales, e.g. ["en-US","fr-FR"].
+
+    TranslationDictionary:
+      type: object
+      additionalProperties: { type: string }
+      description: Key-value map of original string ➝ translated string.
+
+    CatalogItem:
+      type: object
+      properties:
+        form: { $ref: '#/components/schemas/Form' }
+        version: { $ref: '#/components/schemas/FormVersion' }
+
+    CompiledFormPayload:
+      type: object
+      properties:
+        json:
+          type: object
+          description: Final SurveyJS JSON with locale applied.
+        assets:
+          type: array
+          items:
+            type: object
+            properties:
+              id: { type: string }
+              url: { type: string }
+              contentType: { type: string }
+              hash: { type: string }
+
+    # --- Wrapper schemas for single-resource responses (item) ---
+
+    FormResponse:
+      type: object
+      required: [item]
+      properties:
+        item:
+          $ref: '#/components/schemas/Form'
+
+    FormVersionResponse:
+      type: object
+      required: [item]
+      properties:
+        item:
+          $ref: '#/components/schemas/FormVersion'
+
+    TranslationDictionaryResponse:
+      type: object
+      required: [item]
+      properties:
+        item:
+          $ref: '#/components/schemas/TranslationDictionary'
+
+    CompiledFormPayloadResponse:
+      type: object
+      required: [item]
+      properties:
+        item:
+          $ref: '#/components/schemas/CompiledFormPayload'
+
+security:
+  - bearerAuth: []
+
+paths:
+  /user/{userId}/forms:
+    get:
+      tags: [Forms]
+      summary: List forms under a user
+      description: Fetch a list of forms under a user (with filters).
+      parameters:
+        - $ref: '#/components/parameters/UserId'
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/OrderBy'
+        - $ref: '#/components/parameters/OrderDirection'
+        - name: search
+          in: query
+          schema: { type: string }
+          description: Optional search term (name, slug, or description).
+      responses:
+        '200':
+          description: Paginated list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/Form' }
+                  page: { type: integer }
+                  limit: { type: integer }
+        '401': { description: Unauthorized }
+    post:
+      tags: [Forms]
+      summary: Create a new form
+      description: Create a form with metadata and optional initial JSON.
+      parameters:
+        - $ref: '#/components/parameters/UserId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/FormCreateRequest' }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FormResponse'
+        '400': { description: Validation error }
+        '401': { description: Unauthorized }
+
+  /user/{userId}/forms/{formId}:
+    get:
+      tags: [Forms]
+      summary: Get a specific form
+      parameters:
+        - $ref: '#/components/parameters/UserId'
+        - $ref: '#/components/parameters/FormId'
+      responses:
+        '200':
+          description: Form details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FormResponse'
+        '401': { description: Unauthorized }
+        '404': { description: Not found }
+    patch:
+      tags: [Forms]
+      summary: Update form metadata
+      description: Modify metadata or high-level status (not JSON schema).
+      parameters:
+        - $ref: '#/components/parameters/UserId'
+        - $ref: '#/components/parameters/FormId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/FormUpdateRequest' }
+      responses:
+        '200':
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FormResponse'
+        '400': { description: Validation error }
+        '401': { description: Unauthorized }
+        '404': { description: Not found }
+    delete:
+      tags: [Forms]
+      summary: Soft-delete/archive a form
+      parameters:
+        - $ref: '#/components/parameters/UserId'
+        - $ref: '#/components/parameters/FormId'
+      responses:
+        '204': { description: Deleted/archived }
+        '401': { description: Unauthorized }
+        '404': { description: Not found }
+
+  /user/{userId}/forms/{formId}/clone:
+    post:
+      tags: [Forms]
+      summary: Clone an existing form
+      description: Clone an existing form (history excluded unless requested).
+      parameters:
+        - $ref: '#/components/parameters/UserId'
+        - $ref: '#/components/parameters/FormId'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/FormCloneRequest' }
+      responses:
+        '201':
+          description: Cloned form
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FormResponse'
+        '401': { description: Unauthorized }
+        '404': { description: Not found }
+
+  /user/{userId}/forms/{formId}/versions:
+    get:
+      tags: [Form Versions]
+      summary: List form versions
+      parameters:
+        - $ref: '#/components/parameters/UserId'
+        - $ref: '#/components/parameters/FormId'
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/OrderBy'
+        - $ref: '#/components/parameters/OrderDirection'
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [draft, published, archived]
+          description: Filter by version status.
+      responses:
+        '200':
+          description: Paginated list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/FormVersion' }
+                  page: { type: integer }
+                  limit: { type: integer }
+        '401': { description: Unauthorized }
+    post:
+      tags: [Form Versions]
+      summary: Create a new form version
+      parameters:
+        - $ref: '#/components/parameters/UserId'
+        - $ref: '#/components/parameters/FormId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/FormVersionCreateRequest' }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FormVersionResponse'
+        '400': { description: Validation error }
+        '401': { description: Unauthorized }
+
+  /user/{userId}/forms/{formId}/versions/{versionId}:
+    get:
+      tags: [Form Versions]
+      summary: Get a specific form version
+      parameters:
+        - $ref: '#/components/parameters/UserId'
+        - $ref: '#/components/parameters/FormId'
+        - $ref: '#/components/parameters/VersionId'
+      responses:
+        '200':
+          description: Version details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FormVersionResponse'
+        '401': { description: Unauthorized }
+        '404': { description: Not found }
+
+  /user/{userId}/forms/{formId}/versions/{versionId}/publish:
+    post:
+      tags: [Form Versions]
+      summary: Publish a form version
+      description: >
+        Publish a version and demote any previously published one to Draft.
+        Only one Published version is allowed per form.
+      parameters:
+        - $ref: '#/components/parameters/UserId'
+        - $ref: '#/components/parameters/FormId'
+        - $ref: '#/components/parameters/VersionId'
+      responses:
+        '200':
+          description: Published
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FormVersionResponse'
+        '401': { description: Unauthorized }
+        '404': { description: Not found }
+        '409': { description: Conflict (rule violation) }
+
+  /user/{userId}/forms/{formId}/versions/{versionId}/archive:
+    post:
+      tags: [Form Versions]
+      summary: Archive a form version
+      parameters:
+        - $ref: '#/components/parameters/UserId'
+        - $ref: '#/components/parameters/FormId'
+        - $ref: '#/components/parameters/VersionId'
+      responses:
+        '200':
+          description: Archived
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FormVersionResponse'
+        '401': { description: Unauthorized }
+        '404': { description: Not found }
+
+  /user/{userId}/forms/{formId}/versions/{versionId}/validate:
+    post:
+      tags: [Form Versions]
+      summary: Validate a form version
+      description: Validate JSON for schema correctness and business rules.
+      parameters:
+        - $ref: '#/components/parameters/UserId'
+        - $ref: '#/components/parameters/FormId'
+        - $ref: '#/components/parameters/VersionId'
+      responses:
+        '200':
+          description: Validation result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  valid: { type: boolean }
+                  errors:
+                    type: array
+                    items: { type: string }
+        '401': { description: Unauthorized }
+        '404': { description: Not found }
+
+  /user/{userId}/forms/{formId}/versions/{versionId}/translations/{locale}:
+    get:
+      tags: [Translations]
+      summary: Get translation dictionary
+      parameters:
+        - $ref: '#/components/parameters/UserId'
+        - $ref: '#/components/parameters/FormId'
+        - $ref: '#/components/parameters/VersionId'
+        - $ref: '#/components/parameters/LocalePath'
+      responses:
+        '200':
+          description: Dictionary
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TranslationDictionaryResponse'
+        '401': { description: Unauthorized }
+        '404': { description: Not found }
+    put:
+      tags: [Translations]
+      summary: Upload translation dictionary
+      parameters:
+        - $ref: '#/components/parameters/UserId'
+        - $ref: '#/components/parameters/FormId'
+        - $ref: '#/components/parameters/VersionId'
+        - $ref: '#/components/parameters/LocalePath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TranslationDictionary' }
+      responses:
+        '204': { description: Saved }
+        '401': { description: Unauthorized }
+        '404': { description: Not found }
+
+  /user/{userId}/forms/{formId}/versions/{versionId}/compile:
+    post:
+      tags: [Translations]
+      summary: Compile form JSON with translations
+      description: Return compiled SurveyJS JSON ready for rendering.
+      parameters:
+        - $ref: '#/components/parameters/UserId'
+        - $ref: '#/components/parameters/FormId'
+        - $ref: '#/components/parameters/VersionId'
+        - name: locale
+          in: query
+          schema:
+            type: string
+            example: en-US
+          description: Locale to compile with (falls back to default).
+      responses:
+        '200':
+          description: Compiled payload
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CompiledFormPayloadResponse'
+        '401': { description: Unauthorized }
+        '404': { description: Not found }
+
+  /sync/user/{userId}/forms:
+    get:
+      tags: [Sync]
+      summary: Get sync catalog of published forms
+      description: >
+        Returns a filtered list of published forms and versions visible to the
+        caller. Used by external clients to discover available forms.
+      parameters:
+        - $ref: '#/components/parameters/UserId'
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/OrderBy'
+        - $ref: '#/components/parameters/OrderDirection'
+        - name: since
+          in: query
+          schema: { type: string }
+          description: Optional timestamp/token for incremental sync.
+      responses:
+        '200':
+          description: Catalog
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/CatalogItem' }
+                  since: { type: string }
+                  page: { type: integer }
+                  limit: { type: integer }
+        '401': { description: Unauthorized }
+
+  /sync/user/{userId}/forms/{formId}/versions/{versionId}:
+    get:
+      tags: [Sync]
+      summary: Get compiled form for sync clients
+      description: Fetch final compiled form for clients (e.g., field app).
+      parameters:
+        - $ref: '#/components/parameters/UserId'
+        - $ref: '#/components/parameters/FormId'
+        - $ref: '#/components/parameters/VersionId'
+        - name: locale
+          in: query
+          schema:
+            type: string
+            example: en-US
+          description: Optional locale override.
+      responses:
+        '200':
+          description: Compiled payload
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CompiledFormPayloadResponse'
+        '401': { description: Unauthorized }
+        '404': { description: Not found }
+
+  /health:
+    get:
+      security: []
+      tags: [Health]
+      summary: Health check
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ok
+                    properties:
+                      items:
+                        items:
+                          $ref: '#/components/schemas/CatalogItem'
+        '401':
+          description: Unauthorized
+
+  /sync/user/{userId}/forms/{formId}/versions/{versionId}:
+    get:
+      tags: [Sync]
+      summary: Get compiled form for sync clients
+      description: Fetch final compiled form for clients (e.g., field app).
+      parameters:
+        - $ref: '#/components/parameters/UserId'
+        - $ref: '#/components/parameters/FormId'
+        - $ref: '#/components/parameters/VersionId'
+        - name: locale
+          in: query
+          schema:
+            type: string
+            example: en-US
+          description: Optional locale override.
+      responses:
+        '200':
+          description: Compiled payload
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CompiledFormPayload' }
+        '401':
+          description: Unauthorized
+        '404':
+          description: Not found
